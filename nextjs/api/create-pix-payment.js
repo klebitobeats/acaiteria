@@ -12,7 +12,7 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  const mercadopago = require("mercadopago");
+  import mercadopago from "mercadopago";
 
   mercadopago.configure({
     access_token: "TEST-4421698743839070-050603-b2ef49b07e81b9dcd5f751d3f3c6bd01-482595074"
