@@ -1,4 +1,3 @@
-
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -16,7 +15,7 @@ export default async function handler(req, res) {
 
   try {
     const body = {
-      transaction_amount: 1,s
+      transaction_amount: 1,
       description: "Pedido Açaí",
       payment_method_id: "pix",
       payer: {
