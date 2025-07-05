@@ -1444,7 +1444,7 @@ const CheckoutPage = ({ orderDetails, onNavigate, onClearCart }) => {
     const [showCopyMessage, setShowCopyMessage] = useState(false); // For "Copiado!" message
 
     // Vercel API URL (IMPORTANTE: Substitua pela sua URL de deploy real na Vercel!)
-    const VERCEL_API_URL = "https://acaiapp-in2c.vercel.app/api/create-pix-payment";
+    const VERCEL_API_URL = "/api/create-pix-payment";
 
 
     if (!orderDetails || !orderDetails.cartItems || orderDetails.cartItems.length === 0) {
