@@ -16,7 +16,7 @@ export default async function handler(req, res) {
 
   try {
     const body = {
-      transaction_amount: 1,
+      transaction_amount: 1,s
       description: "Pedido Açaí",
       payment_method_id: "pix",
       payer: {
