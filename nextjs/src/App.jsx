@@ -5,7 +5,6 @@ import { getFirestore, collection, doc, getDoc, setDoc, onSnapshot, deleteDoc, a
 import { getStorage } from 'firebase/storage';
 
 // --- Contexto e Provedor Firebase ---
-// Definindo um valor padrão mais robusto para o contexto para evitar erros de desestruturação
 const AppContext = createContext({
     app: null,
     db: null,
@@ -16,17 +15,17 @@ const AppContext = createContext({
     user: null,
     loadingFirebase: true,
     isAdmin: false,
-    currentAppId: 'acai-app-prod', // Valor padrão fixo
+    currentAppId: 'acai-app-prod',
     authErrorMessage: '',
     isAuthReady: false,
     productsData: [],
     toppingsData: [],
     loadingProductsAndToppings: true,
-    message: '', // Manter message e messageType para a MessageBox, mas showMessage não será mais chamado
+    message: '',
     messageType: 'success',
-    showMessage: () => {}, // A função showMessage não fará nada visível
+    showMessage: () => {},
     handleCloseMessage: () => {},
-    handleLogout: () => {}, // Adicionado handleLogout ao contexto
+    handleLogout: () => {},
 });
 
 // Componente provedor que inicializa o Firebase e gerencia estados globais.
@@ -40,39 +39,31 @@ const AppProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loadingFirebase, setLoadingFirebase] = useState(true);
     const [isAdmin, setIsAdmin] = useState(false);
-    const [currentAppId, setCurrentAppId] = useState(''); // Será definido pelo projectId
+    const [currentAppId, setCurrentAppId] = useState('');
     const [authErrorMessage, setAuthErrorMessage] = useState('');
     const [isAuthReady, setIsAuthReady] = useState(false);
-    // NOVO ESTADO: Para armazenar o ID do usuário anônimo quando ele é carregado pela primeira vez
     const anonymousUserIdOnLoad = useRef(null);
 
     const [productsData, setProductsData] = useState([]);
     const [toppingsData, setToppingsData] = useState([]);
     const [loadingProductsAndToppings, setLoadingProductsAndToppings] = useState(true);
-    const [message, setMessage] = useState(''); // Manter para a MessageBox, mas não será preenchido por showMessage
+    const [message, setMessage] = useState('');
     const [messageType, setMessageType] = useState('success');
 
     const previousUserRef = useRef(null);
-    // showMessage agora apenas loga no console, não exibe mensagem visível
     const showMessage = (msg, type = 'success') => {
         if (type === 'error') {
             console.error(`ERRO (showMessage): ${msg}`);
         } else {
             console.log(`INFO (showMessage): ${msg}`);
         }
-        // Não define message/messageType para evitar a MessageBox
-        // setMessage(msg);
-        // setMessageType(type);
-        // setTimeout(() => {
-        //     setMessage('');
-        //     setMessageType('success');
-        // }, 3000);
     };
 
     const handleCloseMessage = () => {
         setMessage('');
         setMessageType('success');
     };
+
     const migrateAnonymousCartInternal = async (dbInstance, appId, anonId, authId, showMsgFunc) => {
         if (!anonId || !authId || anonId === authId || !dbInstance || !appId) {
             console.log("Condições inválidas para migração de carrinho (IDs ausentes, IDs iguais ou DB/AppId não prontos).");
@@ -83,7 +74,7 @@ const AppProvider = ({ children }) => {
             const anonCartDocRef = doc(dbInstance, 'artifacts', appId, 'users', anonId, 'cart', 'currentCart');
             const anonCartSnapshot = await getDoc(anonCartDocRef);
             const anonCartItems = anonCartSnapshot.exists() ? anonCartSnapshot.data().items : [];
-            console.log("DEBUG: Carrinho anônimo lido:", anonCartItems); // DEBUG LOG
+            console.log("DEBUG: Carrinho anônimo lido:", anonCartItems);
             if (anonCartItems.length === 0) {
                 console.log("Nenhum carrinho anônimo para migrar.");
                 return;
@@ -92,10 +83,8 @@ const AppProvider = ({ children }) => {
             const authCartDocRef = doc(dbInstance, 'artifacts', appId, 'users', authId, 'cart', 'currentCart');
             const authCartSnapshot = await getDoc(authCartDocRef);
             let authCartItems = authCartSnapshot.exists() ? authCartSnapshot.data().items : [];
-            // Lógica de unificação do carrinho mais robusta
             const mergedCart = [...authCartItems];
             anonCartItems.forEach(anonItem => {
-                // Normaliza para comparação (considerando adicionais e ingredientes padrão)
                 const anonItemKey = `${anonItem.id}-${JSON.stringify((anonItem.selectedDefaultIngredients || []).sort())}-${JSON.stringify((anonItem.toppings || []).map(t => t.id).sort())}`;
                 const existingAuthItemIndex = mergedCart.findIndex(item => {
                     const authItemKey = `${item.id}-${JSON.stringify((item.selectedDefaultIngredients || []).sort())}-${JSON.stringify((item.toppings || []).map(t => t.id).sort())}`;
@@ -108,51 +97,42 @@ const AppProvider = ({ children }) => {
                     mergedCart.push(anonItem);
                 }
             });
-            console.log("DEBUG: Carrinho unificado para salvar:", mergedCart); // DEBUG LOG
+            console.log("DEBUG: Carrinho unificado para salvar:", mergedCart);
             await setDoc(authCartDocRef, { items: mergedCart }, { merge: true });
-            console.log(`DEBUG: Carrinho do usuário autenticado ${authId} atualizado no Firestore.`); // DEBUG LOG
+            console.log(`DEBUG: Carrinho do usuário autenticado ${authId} atualizado no Firestore.`);
 
-            // NOVO: Tenta excluir o carrinho anônimo, mas captura erros de permissão graciosamente
             try {
                 await deleteDoc(anonCartDocRef);
                 console.log(`Carrinho anônimo para ${anonId} excluído.`);
             } catch (deleteError) {
                 console.warn(`AVISO: Não foi possível excluir o carrinho anônimo para ${anonId} devido a permissões. O carrinho foi migrado, mas o documento anônimo pode persistir. Erro:`, deleteError);
-                // Não é necessário mostrar uma mensagem de erro crítica ao usuário se a migração principal foi bem-sucedida
             }
-            
-            // showMsgFunc("Seu carrinho foi unificado com sua conta!", "success"); // Removido
             console.log("Seu carrinho foi unificado com sua conta!");
 
         } catch (error) {
-            console.error("Erro CRÍTICO ao unificar o carrinho anônimo (leitura/escrita):", error); // Este erro é para problemas de leitura/escrita
-            // showMsgFunc("Erro ao unificar o carrinho após o login.", "error"); // Removido
+            console.error("Erro CRÍTICO ao unificar o carrinho anônimo (leitura/escrita):", error);
         }
     };
-    // Nova função handleLogout que será exposta pelo contexto
+
     const handleLogout = useCallback(async () => {
         try {
             if (auth) {
                 await signOut(auth);
-                // Força a atualização do estado imediatamente para deslogar a UI
                 setUser(null);
                 setUserId(null);
                 setUserEmail(null);
                 setIsAdmin(false);
-                // showMessage("Você saiu da sua conta.", "success"); // Removido
                 console.log("Você saiu da sua conta.");
             } else {
                 console.warn("Objeto de autenticação não disponível para logout.");
             }
         } catch (error) {
             console.error("Erro ao sair:", error);
-            // showMessage("Erro ao sair. Tente novamente.", "error"); // Removido
         }
-    }, [auth]); // Depende apenas de 'auth'
+    }, [auth]);
 
     useEffect(() => {
         try {
-            // Seus dados de configuração do Firebase (hardcoded conforme solicitado)
             const firebaseConfig = {
                 apiKey: "AIzaSyCaZMRp0RgA9szhZHJfvh4p8Bg60YWSUZw",
                 authDomain: "appv-ec0aa.firebaseapp.com",
@@ -172,31 +152,25 @@ const AppProvider = ({ children }) => {
             setDb(firestoreDb);
             setAuth(firebaseAuth);
             setStorage(firebaseStorage);
-            // Define o currentAppId a partir da configuração fornecida
-            const fixedAppId = firebaseConfig.projectId; // Usando projectId como o appId para consistência
+            const fixedAppId = firebaseConfig.projectId;
             setCurrentAppId(fixedAppId);
             console.log("App de Açaí: Usando appId hardcoded:", fixedAppId);
-
 
             const unsubscribeAuth = onAuthStateChanged(firebaseAuth, async (currentUser) => {
                 console.log("AppProvider: Auth state changed. CurrentUser UID:", currentUser ? currentUser.uid : "null");
                 console.log("AppProvider: previousUserRef.current:", previousUserRef.current);
                 console.log("AppProvider: anonymousUserIdOnLoad.current:", anonymousUserIdOnLoad.current);
 
-                // Se o usuário atual é anônimo e ainda não registramos o ID anônimo, faça-o agora.
                 if (currentUser && currentUser.isAnonymous && !anonymousUserIdOnLoad.current) {
                     anonymousUserIdOnLoad.current = currentUser.uid;
                     console.log("AppProvider: anonymousUserIdOnLoad definido como:", anonymousUserIdOnLoad.current);
                 }
 
-                // Lógica de migração: se o usuário anterior era anônimo (pelo anonymousUserIdOnLoad)
-                // e o usuário atual é autenticado (não anônimo), migre o carrinho.
                 if (anonymousUserIdOnLoad.current && currentUser && !currentUser.isAnonymous && anonymousUserIdOnLoad.current !== currentUser.uid) {
-                    console.log("DEBUG: Transição de anônimo para autenticado detectada. Anon ID (stored):", anonymousUserIdOnLoad.current, "Auth ID:", currentUser.uid); // DEBUG LOG
+                    console.log("DEBUG: Transição de anônimo para autenticado detectada. Anon ID (stored):", anonymousUserIdOnLoad.current, "Auth ID:", currentUser.uid);
                     await migrateAnonymousCartInternal(firestoreDb, fixedAppId, anonymousUserIdOnLoad.current, currentUser.uid, showMessage);
-                    console.log("DEBUG: migrateAnonymousCartInternal foi chamada e concluída."); // DEBUG LOG
-                    // Limpa o ID anônimo após a migração para evitar migrações duplicadas
-                    anonymousUserIdOnLoad.current = null; 
+                    console.log("DEBUG: migrateAnonymousCartInternal foi chamada e concluída.");
+                    anonymousUserIdOnLoad.current = null;
                 }
 
                 setUser(currentUser);
@@ -206,7 +180,6 @@ const AppProvider = ({ children }) => {
                 if (!currentUser && firebaseAuth) {
                     console.log("AppProvider: Nenhum usuário atual, tentando login anônimo.");
                     try {
-                        // Não usamos __initial_auth_token aqui, pois você pediu para integrar seu token diretamente
                         await signInAnonymously(firebaseAuth);
                         console.log("AppProvider: Login anônimo bem-sucedido.");
                         setAuthErrorMessage('');
@@ -231,27 +204,20 @@ const AppProvider = ({ children }) => {
                 setLoadingProductsAndToppings(false);
             }, (error) => {
                 console.error("Erro ao carregar produtos:", error);
-                // Modificado: Se for um erro de permissão, apenas avisa no console, não mostra notificação ao usuário
                 if (error.code === 'permission-denied' || error.code === 'unavailable') {
                     console.warn("AVISO: Permissão negada ou serviço indisponível ao carregar produtos. Isso pode ser temporário durante a inicialização/autenticação.");
-                } else {
-                    // showMessage("Erro ao carregar os produtos do menu. Verifique sua conexão e regras do Firebase.", "error"); // Removido
                 }
                 setLoadingProductsAndToppings(false);
             });
-            // CORREÇÃO: Removido o 'public' duplicado no caminho da coleção de toppings
-            const toppingsColRef = collection(firestoreDb, 'artifacts', fixedAppId, 'public', 'data', 'toppings'); 
+            const toppingsColRef = collection(firestoreDb, 'artifacts', fixedAppId, 'public', 'data', 'toppings');
             const unsubscribeToppings = onSnapshot(toppingsColRef, (snapshot) => {
                 const toppings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 setToppingsData(toppings);
                 setLoadingProductsAndToppings(false);
             }, (error) => {
                 console.error("Erro ao carregar adicionais:", error);
-                // Modificado: Se for um erro de permissão, apenas avisa no console, não mostra notificação ao usuário
                 if (error.code === 'permission-denied' || error.code === 'unavailable') {
                     console.warn("AVISO: Permissão negada ou serviço indisponível ao carregar adicionais. Isso pode ser temporário durante a inicialização/autenticação.");
-                } else {
-                    // showMessage("Erro ao carregar os adicionais. Verifique sua conexão e regras do Firebase.", "error"); // Removido
                 }
                 setLoadingProductsAndToppings(false);
             });
@@ -265,15 +231,14 @@ const AppProvider = ({ children }) => {
             setLoadingFirebase(false);
             setAuthErrorMessage(`Erro fatal ao inicializar Firebase: ${error.message}`);
         }
-    }, []); // Array de dependências vazio para rodar apenas uma vez.
+    }, []);
 
-    // Atualiza userEmail no contexto quando o estado 'user' muda
     useEffect(() => {
         setUserEmail(user ? user.email : null);
         setIsAdmin(user && user.email === 'admin@example.com');
     }, [user]);
 
-    const value = { app, db, auth, storage, userId, userEmail, user, loadingFirebase, isAdmin, currentAppId, authErrorMessage, showMessage, message, messageType, handleCloseMessage, isAuthReady, productsData, toppingsData, loadingProductsAndToppings, handleLogout }; // handleLogout exposto
+    const value = { app, db, auth, storage, userId, userEmail, user, loadingFirebase, isAdmin, currentAppId, authErrorMessage, showMessage, message, messageType, handleCloseMessage, isAuthReady, productsData, toppingsData, loadingProductsAndToppings, handleLogout };
 
     return (
         <AppContext.Provider value={value}>
@@ -285,14 +250,15 @@ const AppProvider = ({ children }) => {
 const useAppContext = () => {
     return useContext(AppContext);
 };
+
 const LoadingSpinner = () => (
     <div className="flex justify-center items-center h-screen bg-gradient-to-br from-teal-800 to-green-900 p-4">
         <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-white"></div>
         <p className="ml-4 text-lg text-white font-semibold">Carregando...</p>
     </div>
 );
+
 const MessageBox = ({ message, type, onClose }) => {
-    // Este componente agora não será mais ativado pelas chamadas showMessage
     useEffect(() => {
         if (message) {
             const timer = setTimeout(() => {
@@ -315,7 +281,6 @@ const MessageBox = ({ message, type, onClose }) => {
     );
 };
 
-// Componente de Modal de Confirmação customizado
 const ConfirmationModal = ({ message, onConfirm, onCancel }) => {
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -341,7 +306,6 @@ const ConfirmationModal = ({ message, onConfirm, onCancel }) => {
 };
 
 const Navbar = ({ currentPage, onNavigate, onLogout, userEmail }) => {
-    // Estado para controlar a exibição do modal de confirmação de logout
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
     const handleLogoutClick = () => {
@@ -350,7 +314,7 @@ const Navbar = ({ currentPage, onNavigate, onLogout, userEmail }) => {
 
     const handleConfirmLogout = () => {
         setShowLogoutConfirm(false);
-        onLogout(); // Chama a função de logout passada via props
+        onLogout();
     };
 
     const handleCancelLogout = () => {
@@ -360,8 +324,7 @@ const Navbar = ({ currentPage, onNavigate, onLogout, userEmail }) => {
 
     return (
         <nav className="fixed bottom-0 left-0 right-0 w-full bg-white shadow-lg z-50">
-            <div className="flex items-center justify-around h-16"> {/* Adjust height as needed */}
-                {/* Menu Icon */}
+            <div className="flex items-center justify-around h-16">
                 <div
                     onClick={() => onNavigate('home')}
                     className={`flex flex-col items-center justify-center p-2 cursor-pointer transition-colors duration-200
@@ -375,7 +338,6 @@ const Navbar = ({ currentPage, onNavigate, onLogout, userEmail }) => {
                     <span className="text-xs mt-1">Menu</span>
                 </div>
 
-                {/* Carrinho Icon */}
                 <div
                     onClick={() => onNavigate('cart')}
                     className={`flex flex-col items-center justify-center p-2 cursor-pointer transition-colors duration-200
@@ -387,7 +349,6 @@ const Navbar = ({ currentPage, onNavigate, onLogout, userEmail }) => {
                     <span className="text-xs mt-1">Carrinho</span>
                 </div>
 
-                {/* Pedidos Icon */}
                 <div
                     onClick={() => onNavigate('my-orders')}
                     className={`flex flex-col items-center justify-center p-2 cursor-pointer transition-colors duration-200
@@ -399,7 +360,6 @@ const Navbar = ({ currentPage, onNavigate, onLogout, userEmail }) => {
                     <span className="text-xs mt-1">Pedidos</span>
                 </div>
 
-                {/* Perfil Icon */}
                 {userEmail && (
                     <div
                         onClick={() => onNavigate('profile')}
@@ -425,18 +385,15 @@ const Navbar = ({ currentPage, onNavigate, onLogout, userEmail }) => {
 };
 
 const FloatingCartButton = ({ totalItems, totalPrice, onNavigateToCart, currentPage }) => {
-    // Esconder o botão em páginas específicas ou se o carrinho estiver vazio
     if (totalItems === 0 || ['cart', 'profile', 'product-details', 'my-orders', 'order-finalization', 'checkout-payment'].includes(currentPage)) {
         return null;
     }
 
     return (
         <button
-            // Alterado de top-0 para bottom-16 para posicionar acima da navbar
-            // Alterado de rounded-b-2xl para rounded-t-2xl para arredondar a parte superior
             onClick={onNavigateToCart}
             className="fixed bottom-16 left-0 right-0 bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-extrabold py-3 px-4 sm:py-4 sm:px-6 rounded-t-2xl sm:rounded-t-3xl shadow-lg transition duration-300 ease-in-out transform hover:scale-105 flex items-center justify-between z-40 w-full max-w-sm sm:max-w-md mx-auto"
-            style={{ borderRadius: '1.5rem 1.5rem 0 0' }} // Ajuste manual para garantir o arredondamento superior
+            style={{ borderRadius: '1.5rem 1.5rem 0 0' }}
         >
             <div className="flex items-center space-x-1 sm:space-x-2">
                 <span className="bg-white text-teal-700 text-xs sm:text-sm font-bold px-2 py-1 rounded-full">{totalItems}</span>
@@ -571,10 +528,10 @@ const CustomizeAcaiModal = ({ product, onClose, onCompleteCustomization, initial
 };
 
 const AuthScreen = ({ onLoginSuccess, onClose }) => {
-    const { auth, authErrorMessage } = useAppContext(); // showMessage removido
+    const { auth, authErrorMessage } = useAppContext();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [isRegister, setIsRegister] = useState(true); // Começa em modo de registro
+    const [isRegister, setIsRegister] = useState(true);
     const [authLoading, setAuthLoading] = useState(false);
 
     const handleSubmit = async (e) => {
@@ -582,18 +539,18 @@ const AuthScreen = ({ onLoginSuccess, onClose }) => {
         setAuthLoading(true);
         try {
             if (!auth) {
-                console.error("Erro de inicialização do Firebase Auth."); // showMessage removido
+                console.error("Erro de inicialização do Firebase Auth.");
                 setAuthLoading(false);
                 return;
             }
             if (isRegister) {
                 await createUserWithEmailAndPassword(auth, email, password);
-                console.log("Cadastro realizado com sucesso! Agora você pode finalizar seu pedido."); // showMessage removido
-                onLoginSuccess(); // Chamando a função de sucesso para fechar o modal
+                console.log("Cadastro realizado com sucesso! Agora você pode finalizar seu pedido.");
+                onLoginSuccess();
             } else {
                 await signInWithEmailAndPassword(auth, email, password);
-                console.log("Login realizado com sucesso! Agora você pode finalizar seu pedido."); // showMessage removido
-                onLoginSuccess(); // Chamando a função de sucesso para fechar o modal
+                console.log("Login realizado com sucesso! Agora você pode finalizar seu pedido.");
+                onLoginSuccess();
             }
         } catch (error) {
             let errorMessage = "Ocorreu um erro na autenticação.";
@@ -608,7 +565,7 @@ const AuthScreen = ({ onLoginSuccess, onClose }) => {
             } else if (error.code === 'auth/too-many-requests') {
                 errorMessage = "Muitas tentativas de login. Tente novamente mais tarde.";
             }
-            console.error("Erro de autenticação:", error.code, errorMessage); // showMessage removido
+            console.error("Erro de autenticação:", error.code, errorMessage);
         } finally {
             setAuthLoading(false);
         }
@@ -733,15 +690,12 @@ const ProductList = ({ onSelectProduct }) => {
     };
 
     return (
-        <div className="p-4 sm:p-6 bg-teal-100 min-h-screen pb-32"> {/* Changed from pb-24 to pb-32 */}
-            {/* Removido o h1 do appaçaí daqui */}
+        <div className="p-4 sm:p-6 bg-teal-100 min-h-screen pb-32">
             <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 text-center mb-8 sm:mb-10">Nosso Menu</h2>
-
             {renderProductSection('acai', 'Açaís')}
             {renderProductSection('bebida', 'Bebidas')}
             {renderProductSection('sorvete', 'Sorvetes & Outros')}
             {renderProductSection('coxinha', 'Coxinhas')}
-
         </div>
     );
 };
@@ -788,7 +742,7 @@ const ProductDetailPage = ({ product, onAddToCart, onNavigateBack }) => {
 
     if (product.type !== 'acai') {
         return (
-            <div className="p-4 sm:p-6 bg-teal-100 min-h-screen flex flex-col items-center justify-center text-center pb-32"> {/* Changed from pb-24 to pb-32 */}
+            <div className="p-4 sm:p-6 bg-teal-100 min-h-screen flex flex-col items-center justify-center text-center pb-32">
                 <button
                     onClick={onNavigateBack}
                     className="absolute top-4 left-4 mb-4 sm:mb-6 flex items-center text-teal-600 hover:text-teal-800 font-semibold text-sm sm:text-base"
@@ -813,7 +767,7 @@ const ProductDetailPage = ({ product, onAddToCart, onNavigateBack }) => {
     }
 
     return (
-        <div className="p-4 sm:p-6 bg-teal-100 min-h-screen pb-32"> {/* Changed from pb-24 to pb-32 */}
+        <div className="p-4 sm:p-6 bg-teal-100 min-h-screen pb-32">
             <button
                 onClick={onNavigateBack}
                 className="mb-4 sm:mb-6 flex items-center text-teal-600 hover:text-teal-800 font-semibold text-sm sm:text-base"
@@ -884,7 +838,6 @@ const ProductDetailPage = ({ product, onAddToCart, onNavigateBack }) => {
     );
 };
 
-// NOVO COMPONENTE: RecommendedProducts
 const RecommendedProducts = ({ cartItems, onAddToCart }) => {
     const { productsData, loadingProductsAndToppings } = useAppContext();
     const [recommended, setRecommended] = useState([]);
@@ -894,17 +847,14 @@ const RecommendedProducts = ({ cartItems, onAddToCart }) => {
             return;
         }
 
-        // IDs dos itens já no carrinho para evitar duplicatas
         const cartProductIds = new Set(cartItems.map(item => item.id));
 
-        // Filtra produtos que não são açaí e não estão no carrinho, e que não estão fora de estoque
         const eligibleProducts = productsData.filter(product =>
             product.type !== 'acai' &&
             !cartProductIds.has(product.id) &&
             !product.isOutOfStock
         );
 
-        // Seleciona aleatoriamente até 3 produtos para recomendação
         const shuffled = eligibleProducts.sort(() => 0.5 - Math.random());
         setRecommended(shuffled.slice(0, 3));
     }, [productsData, loadingProductsAndToppings, cartItems]);
@@ -916,8 +866,7 @@ const RecommendedProducts = ({ cartItems, onAddToCart }) => {
     return (
         <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-xl p-6 sm:p-8 mt-8">
             <h3 className="text-xl sm:text-2xl font-bold text-gray-900 mb-6 text-center">Outros clientes também compraram:</h3>
-            {/* Adicionado overflow-x-auto e flex flex-nowrap para permitir o scroll horizontal */}
-            <div className="flex flex-nowrap overflow-x-auto gap-6 pb-4"> {/* Adicionado pb-4 para evitar que a barra de rolagem cubra o conteúdo */}
+            <div className="flex flex-nowrap overflow-x-auto gap-6 pb-4">
                 {recommended.map(product => (
                     <div key={product.id} className="flex-none w-48 flex flex-col items-center text-center p-4 border border-gray-200 rounded-lg shadow-sm">
                         <img src={product.image} alt={product.name} className="w-20 h-20 object-cover rounded-full mb-3 border-2 border-teal-300" onError={(e) => e.target.src = 'https://placehold.co/80x80/cccccc/000000?text=Sem+Imagem'}/>
@@ -936,17 +885,14 @@ const RecommendedProducts = ({ cartItems, onAddToCart }) => {
     );
 };
 
-
 const CartPage = ({ cart, onUpdateCartItem, onRemoveFromCart, onClearCart, onNavigateToFinalization, onNavigateBack, onAddToCart }) => {
     const { showMessage } = useAppContext();
     const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
     const [itemToRemove, setItemToRemove] = useState(null);
     const [showClearCartConfirm, setShowClearCartConfirm] = useState(false);
     
-    // NOVO estado para observações
     const [observations, setObservations] = useState('');
 
-    // Estados para o modal de personalização
     const [showCustomizeModal, setShowCustomizeModal] = useState(false);
     const [itemToCustomize, setItemToCustomize] = useState(null);
 
@@ -959,7 +905,6 @@ const CartPage = ({ cart, onUpdateCartItem, onRemoveFromCart, onClearCart, onNav
 
     const handleActualRemoveItem = () => {
         onRemoveFromCart(itemToRemove.cartItemId);
-        // showMessage("Item removido do carrinho!", "success"); // Removido
         console.log("Item removido do carrinho!");
         setShowRemoveConfirm(false);
         setItemToRemove(null);
@@ -977,7 +922,6 @@ const CartPage = ({ cart, onUpdateCartItem, onRemoveFromCart, onClearCart, onNav
 
     const handleActualClearCart = () => {
         onClearCart();
-        // showMessage("Carrinho limpo!", "success"); // Removido
         console.log("Carrinho limpo!");
         setShowClearCartConfirm(false);
     };
@@ -991,38 +935,33 @@ const CartPage = ({ cart, onUpdateCartItem, onRemoveFromCart, onClearCart, onNav
         onNavigateToFinalization({
             cartItems: cart,
             totalPrice: cartTotal,
-            observations: observations, // Passa as observações
-            deliveryFee: 0 // Assume 0 por enquanto
+            observations: observations,
+            deliveryFee: 0
         });
     };
 
-    // Função para abrir o modal de personalização para um item existente
     const handleOpenCustomizeModal = (item) => {
         setItemToCustomize(item);
         setShowCustomizeModal(true);
     };
 
-    // Função para fechar o modal de personalização
     const handleCloseCustomizeModal = () => {
         setShowCustomizeModal(false);
         setItemToCustomize(null);
     };
 
-    // Função para lidar com a personalização concluída do modal
     const handleCompleteCustomizationFromModal = (customizedProductData) => {
-        // Encontra o índice do item original no carrinho para substituí-lo
         const originalItemIndex = cart.findIndex(item => item.cartItemId === customizedProductData.cartItemId);
         if (originalItemIndex > -1) {
             const updatedCart = [...cart];
             updatedCart[originalItemIndex] = customizedProductData;
-            onUpdateCartItem(customizedProductData); // Usa a função de atualização existente
+            onUpdateCartItem(customizedProductData);
         }
         handleCloseCustomizeModal();
     };
 
-
     return (
-        <div className="p-4 sm:p-6 bg-teal-100 min-h-screen pb-32"> {/* Changed from pb-24 to pb-32 */}
+        <div className="p-4 sm:p-6 bg-teal-100 min-h-screen pb-32">
             <button
                 onClick={onNavigateBack}
                 className="mb-4 sm:mb-6 flex items-center text-teal-600 hover:text-teal-800 font-semibold text-sm sm:text-base"
@@ -1056,7 +995,6 @@ const CartPage = ({ cart, onUpdateCartItem, onRemoveFromCart, onClearCart, onNav
                                         </div>
                                     </div>
                                     <div className="flex items-center space-x-3 mt-3 sm:mt-0">
-                                        {/* Botões de quantidade e remover */}
                                         <button
                                             onClick={() => onUpdateCartItem({ ...item, quantity: Math.max(1, item.quantity - 1) })}
                                             className="bg-gray-200 text-gray-700 font-bold py-1 px-3 rounded-full hover:bg-gray-300 transition text-base"
@@ -1076,7 +1014,6 @@ const CartPage = ({ cart, onUpdateCartItem, onRemoveFromCart, onClearCart, onNav
                                         >
                                             Remover
                                         </button>
-                                        {/* Botão Personalizar (apenas para açaís) */}
                                         {item.type === 'acai' && (
                                             <button
                                                 onClick={() => handleOpenCustomizeModal(item)}
@@ -1091,7 +1028,6 @@ const CartPage = ({ cart, onUpdateCartItem, onRemoveFromCart, onClearCart, onNav
                             ))}
                         </ul>
 
-                        {/* NOVO CAMPO: Observações do Pedido */}
                         <div className="mb-6 bg-yellow-50 p-4 rounded-lg border border-yellow-200">
                             <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">Observações do Pedido</h3>
                             <textarea
@@ -1106,27 +1042,33 @@ const CartPage = ({ cart, onUpdateCartItem, onRemoveFromCart, onClearCart, onNav
                     </>
                 )}
             </div>
-            {/* NOVO COMPONENTE DE RECOMENDAÇÕES */}
-            {cart.length > 0 && ( // Exibe apenas se houver itens no carrinho
+            {cart.length > 0 && (
                 <RecommendedProducts cartItems={cart} onAddToCart={onAddToCart} />
             )}
 
-            {/* Total e botões de ação movidos para aqui, após as recomendações */}
             {cart.length > 0 && (
                 <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-xl p-6 sm:p-8 mt-8">
                     <div className="flex justify-between items-center text-2xl sm:text-3xl font-bold text-teal-800 border-t border-gray-300 pt-4 mt-4">
-                        <span>Total:</span>
+                        <span>Subtotal:</span>
+                        <span>R$ {cartTotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-lg font-semibold text-gray-700 mb-4 border-b pb-4">
+                        <span>Taxa de Entrega:</span>
+                        <span>R$ {0.00.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-2xl sm:text-3xl font-bold text-purple-800 mb-6">
+                        <span>Total a Pagar:</span>
                         <span>R$ {cartTotal.toFixed(2)}</span>
                     </div>
                     <div className="flex flex-col sm:flex-row justify-center mt-6 space-y-3 sm:space-y-0 sm:space-x-4">
                         <button
-                            onClick={() => onNavigate('home')} // Volta para o menu
+                            onClick={() => onNavigate('home')}
                             className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-8 rounded-full transition duration-300 ease-in-out transform hover:scale-105 shadow-md text-base w-full sm:w-auto"
                         >
                             Adicionar mais itens
                         </button>
                         <button
-                            onClick={handleProceedToFinalization} // Chama handleCheckout do App
+                            onClick={handleProceedToFinalization}
                             className="bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-semibold py-3 px-8 rounded-full transition duration-300 ease-in-out transform hover:scale-105 shadow-md text-base w-full sm:w-auto"
                         >
                             Próximo
@@ -1164,9 +1106,10 @@ const CartPage = ({ cart, onUpdateCartItem, onRemoveFromCart, onClearCart, onNav
     );
 };
 
-// NOVO COMPONENTE: OrderFinalization (Finalização de Pedido)
+// Componente: OrderFinalization (Finalização de Pedido)
 const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetailsForCheckout, orderDetails }) => {
-    const { userId, userEmail, db, currentAppId, user } = useAppContext(); // showMessage removido
+    // Adicionado handleClearCart aqui, pois ele é usado nesta função.
+    const { userId, userEmail, db, currentAppId, user, handleClearCart } = useAppContext();
     
     // Estados para os campos do formulário
     const [cep, setCep] = useState('');
@@ -1175,10 +1118,10 @@ const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetails
     const [bairro, setBairro] = useState('');
     const [pontoReferencia, setPontoReferencia] = useState('');
     const [whatsapp, setWhatsapp] = useState('');
-    const [paymentMethod, setPaymentMethod] = useState('pix');
+    const [paymentMethod, setPaymentMethod] = useState('pix'); // Padrão para Pix
 
     const cartTotal = cart.reduce((total, item) => total + (item.basePrice * item.quantity), 0);
-    const deliveryFee = 0.00; // Taxa de entrega simulada
+    const deliveryFee = 0.00;
     const totalToPay = cartTotal + deliveryFee;
 
     // Carrega dados do perfil se o usuário estiver logado
@@ -1188,7 +1131,6 @@ const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetails
             const unsubscribe = onSnapshot(userProfileDocRef, (docSnapshot) => {
                 if (docSnapshot.exists()) {
                     const data = docSnapshot.data();
-                    // Garante que todos os campos sejam strings, mesmo que undefined no Firestore
                     setCep(data.address?.cep || '');
                     setRua(data.address?.street || '');
                     setNumero(data.address?.number || '');
@@ -1197,31 +1139,32 @@ const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetails
                     setWhatsapp(data.phone || '');
                 }
             }, (error) => {
-                console.error("Erro ao carregar dados do perfil:", error); // showMessage removido
+                console.error("Erro ao carregar dados do perfil:", error);
             });
             return () => unsubscribe();
         }
-    }, [user, db, currentAppId, userId]); // showMessage removido das dependências
-
+    }, [user, db, currentAppId, userId]);
 
     const handleProceedToAuth = async (e) => {
         e.preventDefault();
 
         // Validação básica dos campos obrigatórios
         if (!whatsapp || !cep || !rua || !numero || !bairro) {
-            console.error("Por favor, preencha todos os campos obrigatórios (WhatsApp e Endereço)."); // showMessage removido
+            console.error("Por favor, preencha todos os campos obrigatórios (WhatsApp e Endereço).");
             return;
         }
 
-        // Salva os detalhes do pedido no estado do App (ou passa via props para CheckoutPage)
-        const orderDetailsToPass = {
-            // Cópia explícita dos campos do pedido, garantindo que não há 'undefined'
-            cartItems: cart, // Sempre usa o carrinho atual da página
-            totalPrice: cartTotal, // Sempre usa o total atual da página
-            observations: orderDetails?.observations || '', // Usa as observações que vieram do CartPage, se houver, ou string vazia
-            deliveryFee: orderDetails?.deliveryFee || 0, // Usa a taxa de entrega que veio do CartPage, se houver, ou 0
+        // Garante que a instância do Firestore está disponível
+        if (!db) {
+            console.error("Erro: Instância do Firestore não disponível. Tente novamente.");
+            return;
+        }
 
-            // Adiciona/sobrescreve com os detalhes coletados nesta página
+        const orderDetailsToSave = {
+            cartItems: cart,
+            totalPrice: cartTotal,
+            observations: orderDetails?.observations || '',
+            deliveryFee: orderDetails?.deliveryFee || 0,
             deliveryAddress: {
                 cep: cep || '', 
                 rua: rua || '', 
@@ -1230,20 +1173,58 @@ const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetails
                 pontoReferencia: pontoReferencia || ''
             },
             whatsapp: whatsapp || '', 
-            paymentMethod: paymentMethod || 'pix', // Garante um método de pagamento padrão
+            paymentMethod: paymentMethod || 'pix',
+            userId: userId,
+            userEmail: userEmail || 'anonimo@example.com',
+            timestamp: serverTimestamp(),
         };
-        setOrderDetailsForCheckout(orderDetailsToPass); // Seta no App para ser usado na CheckoutPage
 
-        if (!userEmail) {
-            onShowAuthScreen(); // Abre o pop-up de login/registro
-        } else {
-            // Se já estiver logado, vai direto para a página de checkout
-            onNavigate('checkout-payment');
+        // Salva o pedido no Firestore ANTES de redirecionar para o Pix ou ir para Meus Pedidos
+        try {
+            const allOrdersCollectionRef = collection(db, 'artifacts', currentAppId, 'public', 'data', 'all_orders');
+            const newPublicOrderRef = await addDoc(allOrdersCollectionRef, { 
+                ...orderDetailsToSave, 
+                status: paymentMethod === 'pix' ? 'Aguardando Pagamento PIX' : 'Pendente' // Status inicial
+            });
+            const orderIdForBoth = newPublicOrderRef.id;
+
+            const userOrderDocRef = doc(db, 'artifacts', currentAppId, 'users', userId, 'orders', orderIdForBoth);
+            await setDoc(userOrderDocRef, { 
+                ...orderDetailsToSave, 
+                id: orderIdForBoth, 
+                status: paymentMethod === 'pix' ? 'Aguardando Pagamento PIX' : 'Pendente' // Status inicial
+            });
+
+            handleClearCart(); // Limpa o carrinho após o pedido ser salvo
+
+            if (paymentMethod === 'pix') {
+                // Redireciona para o checkout Pix externo
+                const PIX_CHECKOUT_URL = "https://pixgemini.vercel.app"; // SUA URL REAL DO PROJETO PIX
+                console.log("DEBUG: Redirecionando para PIX externo. URL:", PIX_CHECKOUT_URL);
+                const params = new URLSearchParams({
+                    valor: totalToPay.toFixed(2), // Garante que o valor é uma string formatada
+                    id_pedido: orderIdForBoth,
+                    endereco: JSON.stringify(orderDetailsToSave.deliveryAddress), // Envia como string JSON
+                    observacoes: orderDetailsToSave.observations,
+                    whatsapp: orderDetailsToSave.whatsapp,
+                    userEmail: orderDetailsToSave.userEmail
+                }).toString();
+                window.location.href = `${PIX_CHECKOUT_URL}?${params}`;
+            } else if (paymentMethod === 'cash') {
+                console.log("DEBUG: Pagamento em Dinheiro selecionado. Redirecionando para Meus Pedidos.");
+                onNavigate('my-orders'); // Redireciona para a página de Meus Pedidos
+            } else {
+                console.warn("Método de pagamento não suportado:", paymentMethod);
+                onNavigate('my-orders'); // Redireciona para meus pedidos como fallback
+            }
+
+        } catch (error) {
+            console.error("Erro ao finalizar pedido no Firestore:", error);
         }
     };
 
     return (
-        <div className="p-4 sm:p-6 bg-teal-100 min-h-screen pb-32"> {/* Changed from pb-24 to pb-32 */}
+        <div className="p-4 sm:p-6 bg-teal-100 min-h-screen pb-32">
             <button
                 onClick={() => onNavigate('cart')}
                 className="mb-4 sm:mb-6 flex items-center text-teal-600 hover:text-teal-800 font-semibold text-sm sm:text-base"
@@ -1349,29 +1330,7 @@ const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetails
                                     onChange={() => setPaymentMethod('pix')}
                                     className="form-radio h-5 w-5 text-purple-600"
                                 />
-                                <span className="ml-3 font-semibold">Pix (Simulado)</span>
-                            </label>
-                            <label className="flex items-center text-lg text-gray-700 cursor-pointer">
-                                <input
-                                    type="radio"
-                                    name="payment"
-                                    value="credit_card"
-                                    checked={paymentMethod === 'credit_card'}
-                                    onChange={() => setPaymentMethod('credit_card')}
-                                    className="form-radio h-5 w-5 text-purple-600"
-                                />
-                                <span className="ml-3 font-semibold">Cartão de Crédito (Simulado)</span>
-                            </label>
-                             <label className="flex items-center text-lg text-gray-700 cursor-pointer">
-                                <input
-                                    type="radio"
-                                    name="payment"
-                                    value="debit_card"
-                                    checked={paymentMethod === 'debit_card'}
-                                    onChange={() => setPaymentMethod('debit_card')}
-                                    className="form-radio h-5 w-5 text-purple-600"
-                                />
-                                <span className="ml-3 font-semibold">Cartão de Débito (Simulado)</span>
+                                <span className="ml-3 font-semibold">Pix</span>
                             </label>
                              <label className="flex items-center text-lg text-gray-700 cursor-pointer">
                                 <input
@@ -1382,7 +1341,7 @@ const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetails
                                     onChange={() => setPaymentMethod('cash')}
                                     className="form-radio h-5 w-5 text-purple-600"
                                 />
-                                <span className="ml-3 font-semibold">Dinheiro (Simulado)</span>
+                                <span className="ml-3 font-semibold">Dinheiro</span>
                             </label>
                         </div>
                     </div>
@@ -1406,7 +1365,7 @@ const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetails
                             className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-full shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:opacity-50"
                             disabled={!whatsapp || !cep || !rua || !numero || !bairro || !paymentMethod} 
                         >
-                            Ir para o Login/Cadastro
+                            {userEmail ? 'Finalizar Pedido' : 'Ir para o Login/Cadastro'}
                         </button>
                         {!whatsapp && (
                              <p className="text-red-500 text-sm text-center mt-4">
@@ -1430,328 +1389,20 @@ const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetails
     );
 };
 
-// NOVO COMPONENTE: CheckoutPage
-const CheckoutPage = ({ orderDetails, onNavigate, onClearCart }) => {
-    const { userId, userEmail, db, currentAppId, user } = useAppContext();
-    const [submittingPayment, setSubmittingPayment] = useState(false);
-
-    // --- NOVOS ESTADOS PARA PIX ---
-    const [pixData, setPixData] = useState(null); // Stores { qrCodeBase64, qrCodeText, expirationTime, paymentId, status }
-    const [pixLoading, setPixLoading] = useState(false);
-    const [pixError, setPixError] = useState('');
-    const [countdown, setCountdown] = useState(0); // Time in seconds for expiration
-    const countdownIntervalRef = useRef(null); // Ref to store interval ID
-    const [showCopyMessage, setShowCopyMessage] = useState(false); // For "Copiado!" message
-
-    // Vercel API URL (IMPORTANTE: Substitua pela sua URL de deploy real na Vercel!)
-    const VERCEL_API_URL = "/api/create-pix-payment";
-
-
-    if (!orderDetails || !orderDetails.cartItems || orderDetails.cartItems.length === 0) {
-        console.error("Nenhum pedido para finalizar. Volte ao carrinho.");
-        onNavigate('cart');
-        return <LoadingSpinner />; // Ou outro fallback
-    }
-
-    // --- LÓGICA DE PAGAMENTO ATUALIZADA ---
-    const handleProcessPayment = async () => { // Renomeado de handlePaymentComplete
-        setSubmittingPayment(true);
-        setPixError(''); // Limpa erros anteriores
-
-        if (!userEmail || !userId) {
-            console.error("Erro: Usuário não autenticado. Por favor, tente novamente desde o carrinho.");
-            setSubmittingPayment(false);
-            return;
-        }
-
-        // 1. Salva/atualiza o perfil do usuário (sempre feito, independente do método de pagamento)
-        try {
-            const userProfileDocRef = doc(db, 'artifacts', currentAppId, 'users', userId, 'profile', 'details');
-            await setDoc(userProfileDocRef, {
-                name: user?.displayName || user?.email || '',
-                email: userEmail,
-                phone: orderDetails.whatsapp || '',
-                address: {
-                    cep: orderDetails.deliveryAddress?.cep || '',
-                    street: orderDetails.deliveryAddress?.rua || '',
-                    number: orderDetails.deliveryAddress?.numero || '',
-                    neighborhood: orderDetails.deliveryAddress?.bairro || '',
-                    reference: orderDetails.deliveryAddress?.pontoReferencia || ''
-                },
-                lastUpdated: serverTimestamp()
-            }, { merge: true });
-            console.log("Perfil do usuário atualizado com endereço e WhatsApp.");
-        } catch (error) {
-            console.error("Erro ao atualizar perfil do usuário:", error);
-            setSubmittingPayment(false);
-            return; // Impede a continuação se o perfil não puder ser salvo
-        }
-
-        // 2. Processa o pagamento de acordo com o método selecionado
-        if (orderDetails.paymentMethod === 'pix') {
-            setPixLoading(true);
-            console.log("DEBUG: Tentando gerar PIX. URL da API:", VERCEL_API_URL); // Log da URL
-            try {
-                const response = await fetch(VERCEL_API_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        amount: orderDetails.totalPrice,
-                        description: `Pedido de Açaí #${orderDetails.whatsapp}`, // Usando whatsapp como parte da descrição para unicidade
-                        payerEmail: userEmail,
-                        externalReference: `${orderDetails.whatsapp}-${Date.now()}`, // Referência única
-                    }),
-                });
-
-                console.log("DEBUG: Resposta bruta da API:", response); // Log da resposta bruta
-                const data = await response.json();
-                console.log("DEBUG: Dados JSON da resposta da API:", data); // Log dos dados JSON
-
-                if (response.ok && data.qrCodeBase64) {
-                    setPixData(data);
-                    // Salva o pedido no Firestore com os detalhes do PIX gerado
-                    const orderData = {
-                        userId: userId,
-                        userEmail: userEmail || 'anonimo@example.com',
-                        items: orderDetails.cartItems,
-                        total: orderDetails.totalPrice,
-                        status: 'Aguardando Pagamento PIX', // Novo status para PIX
-                        timestamp: serverTimestamp(),
-                        deliveryAddress: orderDetails.deliveryAddress,
-                        whatsapp: orderDetails.whatsapp,
-                        paymentMethod: orderDetails.paymentMethod,
-                        observations: orderDetails.observations,
-                        deliveryFee: orderDetails.deliveryFee,
-                        pixPaymentId: data.paymentId, // Salva o ID do pagamento do Mercado Pago
-                        pixQrCodeText: data.qrCodeText, // Salva o código copia e cola do PIX
-                        pixExpirationTime: data.expirationTime, // Salva a expiração do PIX
-                    };
-
-                    const allOrdersCollectionRef = collection(db, 'artifacts', currentAppId, 'public', 'data', 'all_orders');
-                    const newPublicOrderRef = await addDoc(allOrdersCollectionRef, orderData);
-                    const orderIdForBoth = newPublicOrderRef.id;
-
-                    const userOrderDocRef = doc(db, 'artifacts', currentAppId, 'users', userId, 'orders', orderIdForBoth);
-                    await setDoc(userOrderDocRef, { ...orderData, id: orderIdForBoth });
-
-                    onClearCart(); // Limpa o carrinho após o pedido ser salvo
-                    console.log("Pedido PIX gerado e salvo no Firestore com sucesso!");
-                    // Não há navegação imediata para 'my-orders' aqui; o usuário precisa ver o QR code
-                } else {
-                    setPixError(data.error || 'Erro desconhecido ao gerar PIX.');
-                    console.error("Erro ao gerar PIX:", data);
-                }
-            } catch (error) {
-                setPixError('Erro de conexão ao gerar PIX. Verifique sua rede.');
-                console.error("Erro de rede ao gerar PIX:", error);
-            } finally {
-                setPixLoading(false);
-                setSubmittingPayment(false);
-            }
-        } else {
-            // Lógica existente para pagamentos que não são PIX
-            try {
-                const orderData = {
-                    userId: userId,
-                    userEmail: userEmail || 'anonimo@example.com',
-                    items: orderDetails.cartItems,
-                    total: orderDetails.totalPrice,
-                    status: 'Pendente', // Status inicial para outros métodos
-                    timestamp: serverTimestamp(),
-                    deliveryAddress: orderDetails.deliveryAddress,
-                    whatsapp: orderDetails.whatsapp,
-                    paymentMethod: orderDetails.paymentMethod,
-                    observations: orderDetails.observations,
-                    deliveryFee: orderDetails.deliveryFee,
-                };
-
-                const allOrdersCollectionRef = collection(db, 'artifacts', currentAppId, 'public', 'data', 'all_orders');
-                const newPublicOrderRef = await addDoc(allOrdersCollectionRef, orderData);
-                const orderIdForBoth = newPublicOrderRef.id;
-
-                const userOrderDocRef = doc(db, 'artifacts', currentAppId, 'users', userId, 'orders', orderIdForBoth);
-                await setDoc(userOrderDocRef, { ...orderData, id: orderIdForBoth });
-
-                onClearCart();
-                console.log("Pagamento confirmado! Seu pedido foi realizado com sucesso.");
-                onNavigate('my-orders'); // Redireciona para a página de meus pedidos
-            } catch (error) {
-                console.error("Erro ao finalizar pedido:", error);
-            } finally {
-                setSubmittingPayment(false);
-            }
-        }
-    };
-
-    // --- EFEITO PARA CONTADOR REGRESSIVO DO PIX ---
-    useEffect(() => {
-        if (pixData && pixData.expirationTime) {
-            const expirationTimestamp = new Date(pixData.expirationTime).getTime();
-            const updateCountdown = () => {
-                const now = new Date().getTime();
-                const timeLeft = Math.max(0, Math.floor((expirationTimestamp - now) / 1000));
-                setCountdown(timeLeft);
-
-                if (timeLeft <= 0) {
-                    clearInterval(countdownIntervalRef.current);
-                    console.log("Tempo para pagamento PIX expirou.");
-                    // Opcional: setPixError("Tempo para pagamento Pix expirou. Por favor, faça um novo pedido.");
-                }
-            };
-
-            // Limpa qualquer intervalo existente antes de iniciar um novo
-            if (countdownIntervalRef.current) {
-                clearInterval(countdownIntervalRef.current);
-            }
-
-            // Define o contador inicial e atualiza a cada segundo
-            updateCountdown();
-            countdownIntervalRef.current = setInterval(updateCountdown, 1000);
-        }
-
-        // Função de limpeza para parar o intervalo quando o componente for desmontado ou pixData mudar
-        return () => {
-            if (countdownIntervalRef.current) {
-                clearInterval(countdownIntervalRef.current);
-            }
-        };
-    }, [pixData]); // Depende de pixData para reiniciar quando um novo PIX é gerado
-
-    // --- FUNÇÕES AUXILIARES ---
-    // Formata o tempo para MM:SS
-    const formatTime = (seconds) => {
-        const minutes = Math.floor(seconds / 60);
-        const remainingSeconds = seconds % 60;
-        return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-    };
-
-    // Copia o código PIX para a área de transferência
-    const copyPixCode = () => {
-        if (pixData && pixData.qrCodeText) {
-            // Usando document.execCommand('copy') para melhor compatibilidade com iframes
-            const el = document.createElement('textarea');
-            el.value = pixData.qrCodeText;
-            document.body.appendChild(el);
-            el.select();
-            document.execCommand('copy');
-            document.body.removeChild(el);
-            setShowCopyMessage(true);
-            setTimeout(() => setShowCopyMessage(false), 2000); // Esconde a mensagem após 2 segundos
-        }
-    };
-
-
-    return (
-        <div className="p-4 sm:p-6 bg-teal-100 min-h-screen pb-32">
-            <button
-                onClick={() => onNavigate('order-finalization')}
-                className="mb-4 sm:mb-6 flex items-center text-teal-600 hover:text-teal-800 font-semibold text-sm sm:text-base"
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:h-5 sm:w-5 mr-1 sm:mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-                Voltar para Finalização
-            </button>
-
-            <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl p-6 sm:p-8 text-center">
-                <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-8">Confirmação de Pagamento</h2>
-
-                {orderDetails.paymentMethod === 'pix' ? (
-                    <div className="mb-8">
-                        {pixLoading ? (
-                            <LoadingSpinner />
-                        ) : pixError ? (
-                            <div className="text-red-500 text-lg mb-4">{pixError}</div>
-                        ) : pixData ? (
-                            <>
-                                <p className="text-xl font-semibold text-gray-700 mb-4">Pague com Pix:</p>
-                                {/* Imagem do QR Code em base64 */}
-                                <img
-                                    src={`data:image/png;base64,${pixData.qrCodeBase64}`}
-                                    alt="QR Code Pix"
-                                    className="mx-auto my-4 rounded-lg shadow-md border-2 border-gray-200 w-48 h-48 sm:w-60 sm:h-60"
-                                />
-                                <p className="text-lg text-gray-600">Escaneie o QR Code acima ou use o código:</p>
-                                <div className="relative bg-gray-100 p-3 rounded-lg mt-3 mb-4 border border-gray-300 break-all text-sm sm:text-base">
-                                    <span className="font-mono">{pixData.qrCodeText}</span>
-                                    <button
-                                        onClick={copyPixCode}
-                                        className="absolute top-1/2 right-3 -translate-y-1/2 bg-teal-500 hover:bg-teal-600 text-white text-xs font-semibold py-1 px-2 rounded-md transition duration-200"
-                                    >
-                                        {showCopyMessage ? 'Copiado!' : 'Copiar'}
-                                    </button>
-                                </div>
-                                {countdown > 0 && (
-                                    <p className="text-red-500 font-semibold text-md mt-2">
-                                        Tempo restante: {formatTime(countdown)}
-                                    </p>
-                                )}
-                                {countdown <= 0 && pixData && (
-                                    <p className="text-red-600 font-bold text-lg mt-2">
-                                        O tempo para pagamento Pix expirou.
-                                    </p>
-                                )}
-                            </>
-                        ) : (
-                            <p className="text-lg text-gray-600">Preparando seu Pix...</p>
-                        )}
-                    </div>
-                ) : (
-                    <div className="mb-8">
-                        <p className="text-xl font-semibold text-gray-700 mb-4">Pagamento com {orderDetails.paymentMethod} (Simulado):</p>
-                        <p className="text-lg text-gray-600">Por favor, prossiga com o pagamento de R$ {orderDetails.totalPrice.toFixed(2)} na maquininha ao receber o pedido.</p>
-                        <p className="text-sm text-gray-500 mt-2">Esta é uma simulação. Nenhuma transação será processada.</p>
-                    </div>
-                )}
-
-                <p className="text-2xl font-bold text-teal-800 mb-6">Total a Pagar: R$ {orderDetails.totalPrice.toFixed(2)}</p>
-
-                {orderDetails.paymentMethod === 'pix' && !pixData && !pixError ? (
-                    <button
-                        onClick={handleProcessPayment} // Este botão agora dispara a geração do PIX
-                        className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-full shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:opacity-50"
-                        disabled={submittingPayment || pixLoading}
-                    >
-                        {pixLoading ? 'Gerando Pix...' : 'Gerar Pix e Finalizar Pedido'}
-                    </button>
-                ) : orderDetails.paymentMethod === 'pix' && pixData ? (
-                    <button
-                        onClick={() => onNavigate('my-orders')} // Após o PIX ser exibido, o usuário pode ir para os pedidos
-                        className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-full shadow-md transition duration-300 ease-in-out transform hover:scale-105"
-                    >
-                        Voltar para Meus Pedidos
-                    </button>
-                ) : (
-                    <button
-                        onClick={handleProcessPayment} // Para outros métodos, isso salva no Firestore e navega
-                        className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-full shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:opacity-50"
-                        disabled={submittingPayment}
-                    >
-                        {submittingPayment ? 'Confirmando...' : 'Fiz o pagamento'}
-                    </button>
-                )}
-            </div>
-        </div>
-    );
-};
-
+// REMOVIDO: Componente CheckoutPage foi removido e sua lógica integrada em OrderFinalization.
 
 const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
-    const { userId, userEmail, db, currentAppId, isAuthReady } = useAppContext(); // showMessage removido
+    const { userId, userEmail, db, currentAppId, isAuthReady } = useAppContext();
     const [orders, setOrders] = useState([]);
     const [ordersLoading, setOrdersLoading] = useState(true);
 
-    // Substitua este número pelo número real do WhatsApp da sua loja
     const STORE_WHATSAPP_NUMBER = "5581992764831"; 
 
     useEffect(() => {
         console.log("MyOrdersPage useEffect trigger - userId:", userId, "userEmail:", userEmail, "db:", !!db, "isAuthReady:", isAuthReady);
 
-        // Este listener só deve ser configurado se o Firebase, um userId e o estado de autenticação estiverem prontos.
         if (db && userId && isAuthReady) {
-            setOrdersLoading(true); // Redefine o estado de carregamento quando os parâmetros mudam
+            setOrdersLoading(true);
             console.log(`MyOrdersPage: Configurando onSnapshot para pedidos para userId: ${userId}`);
             const ordersColRef = collection(db, 'artifacts', currentAppId, 'users', userId, 'orders');
             const q = query(
@@ -1773,7 +1424,7 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
                 setOrders(fetchedOrders);
                 setOrdersLoading(false);
             }, (error) => {
-                console.error("MyOrdersPage: Erro ao carregar pedidos:", error); // showMessage removido
+                console.error("MyOrdersPage: Erro ao carregar pedidos:", error);
                 setOrdersLoading(false);
             });
 
@@ -1782,18 +1433,18 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
                 unsubscribe();
             };
         } else {
-            // Se as condições não forem atendidas, limpe os pedidos e pare o carregamento.
             console.log("MyOrdersPage useEffect: Condições NÃO atendidas para buscar pedidos. userId:", userId, "db:", !!db, "isAuthReady:", isAuthReady);
             setOrders([]);
             setOrdersLoading(false);
         }
-    }, [userId, db, currentAppId, isAuthReady]); // showMessage removido das dependências
+    }, [userId, db, currentAppId, isAuthReady]);
 
-    // Função para obter as classes de cor com base no status
     const getStatusColorClass = (status) => {
         switch (status) {
             case 'Pendente':
                 return 'text-yellow-600'; 
+            case 'Aguardando Pagamento PIX':
+                return 'text-orange-600';
             case 'Confirmado': 
                 return 'text-blue-600'; 
             case 'Em Preparação':
@@ -1849,7 +1500,7 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
     }
 
     return (
-        <div className="p-4 sm:p-6 bg-teal-100 min-h-screen pb-32"> {/* Changed from pb-24 to pb-32 */}
+        <div className="p-4 sm:p-6 bg-teal-100 min-h-screen pb-32">
             <button
                 onClick={onNavigateBack}
                 className="mb-4 sm:mb-6 flex items-center text-teal-600 hover:text-teal-800 font-semibold text-sm sm:text-base"
@@ -1861,7 +1512,6 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
             </button>
             <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-xl p-6 sm:p-8">
                 <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 text-center mb-8">Meus Pedidos</h2>
-                {/* AQUI: A condição para exibir o prompt de login agora inclui 'isAuthReady' */}
                 {!userEmail && isAuthReady ? ( 
                     <div className="text-center">
                         <p className="text-gray-700 text-lg sm:text-xl mb-4">
@@ -1895,14 +1545,14 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
                                             </li>
                                         ))}
                                     </ul>
-                                    {order.observations && order.observations.trim() !== '' && ( // Exibe observações se existirem
+                                    {order.observations && order.observations.trim() !== '' && (
                                         <div className="bg-yellow-50 p-3 rounded-md mt-2">
                                             <p className="text-sm text-gray-700">
                                                 <span className="font-semibold">Observação:</span> {order.observations}
                                             </p>
                                         </div>
                                     )}
-                                    {order.deliveryAddress && ( // Exibe endereço se existir
+                                    {order.deliveryAddress && (
                                         <div className="bg-blue-50 p-3 rounded-md mt-2">
                                             <p className="text-sm text-gray-700">
                                                 <span className="font-semibold">Endereço de Entrega:</span> {order.deliveryAddress.rua}, {order.deliveryAddress.numero}, {order.deliveryAddress.bairro} - CEP: {order.deliveryAddress.cep}
@@ -1910,7 +1560,7 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
                                             </p>
                                         </div>
                                     )}
-                                    {order.whatsapp && ( // Exibe WhatsApp se existir
+                                    {order.whatsapp && (
                                         <div className="bg-green-50 p-3 rounded-md mt-2">
                                             <p className="text-sm text-gray-700">
                                                 <span className="font-semibold">WhatsApp do Cliente:</span> {order.whatsapp}
@@ -1918,7 +1568,7 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
                                         </div>
                                     )}
                                     <p className="font-extrabold text-xl text-teal-800 text-right mt-3">Total: R$ {order.total.toFixed(2)}</p>
-                                    <p className="text-sm text-gray-700 text-right">Forma de Pagamento: {order.paymentMethod}</p> {/* Exibe forma de pagamento */}
+                                    <p className="text-sm text-gray-700 text-right">Forma de Pagamento: {order.paymentMethod}</p>
                                     <div className="mt-4 flex justify-end">
                                         <button
                                             onClick={() => handleWhatsAppClick(order)}
@@ -1941,12 +1591,11 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
 };
 
 const ProfilePage = ({ onNavigateBack }) => {
-    const { userId, userEmail, db, currentAppId, handleLogout } = useAppContext(); // showMessage removido
+    const { userId, userEmail, db, currentAppId, handleLogout } = useAppContext();
     const [userProfile, setUserProfile] = useState(null);
     const [profileLoading, setProfileLoading] = useState(true);
     const [editMode, setEditMode] = useState(false);
     
-    // Estados para os campos de perfil
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [cep, setCep] = useState('');
@@ -1987,34 +1636,34 @@ const ProfilePage = ({ onNavigateBack }) => {
             }
             setProfileLoading(false);
         }, (error) => {
-            console.error("Erro ao carregar perfil:", error); // showMessage removido
+            console.error("Erro ao carregar perfil:", error);
             setProfileLoading(false);
         });
 
         return () => unsubscribe();
-    }, [userId, db, currentAppId]); // showMessage removido das dependências
+    }, [userId, db, currentAppId]);
 
     const handleSaveProfile = async () => {
         setSaveLoading(true);
         try {
             const userProfileDocRef = doc(db, 'artifacts', currentAppId, 'users', userId, 'profile', 'details');
             await setDoc(userProfileDocRef, {
-                name: name || '', // Garante que é uma string
+                name: name || '',
                 email: userEmail, 
-                phone: phone || '', // Garante que é uma string
-                address: { // Garante que todos os campos de endereço são strings
+                phone: phone || '',
+                address: {
                     cep: cep || '', 
                     street: rua || '', 
                     number: numero || '', 
                     neighborhood: bairro || '', 
                     reference: pontoReferencia || ''
                 },
-                lastUpdated: serverTimestamp() // Usa serverTimestamp para consistência
+                lastUpdated: serverTimestamp()
             }, { merge: true });
-            console.log("Perfil atualizado com sucesso!"); // showMessage removido
+            console.log("Perfil atualizado com sucesso!");
             setEditMode(false);
         } catch (error) {
-            console.error("Erro ao salvar perfil:", error); // showMessage removido
+            console.error("Erro ao salvar perfil:", error);
         } finally {
             setSaveLoading(false);
         }
@@ -2039,7 +1688,7 @@ const ProfilePage = ({ onNavigateBack }) => {
     }
 
     return (
-        <div className="p-4 sm:p-6 bg-teal-100 min-h-screen pb-32"> {/* Changed from pb-24 to pb-32 */}
+        <div className="p-4 sm:p-6 bg-teal-100 min-h-screen pb-32">
             <button
                 onClick={onNavigateBack}
                 className="mb-4 sm:mb-6 flex items-center text-teal-600 hover:text-teal-800 font-semibold text-sm sm:text-base"
@@ -2082,7 +1731,6 @@ const ProfilePage = ({ onNavigateBack }) => {
                                 placeholder="(XX) XXXXX-XXXX"
                             />
                         </div>
-                        {/* Campos de Endereço em modo de edição */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-gray-700 text-sm font-semibold mb-1">CEP:</label>
@@ -2172,7 +1820,7 @@ const ProfilePage = ({ onNavigateBack }) => {
                                 <p className="text-lg">Não informado</p>
                             )}
                         </div>
-                        <div className="flex justify-between items-center mt-4"> {/* Adicionado flexbox para alinhar botões */}
+                        <div className="flex justify-between items-center mt-4">
                             <button
                                 onClick={() => setEditMode(true)}
                                 className="bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2 px-5 rounded-md transition duration-200"
@@ -2180,7 +1828,7 @@ const ProfilePage = ({ onNavigateBack }) => {
                                 Editar Perfil
                             </button>
                             <button
-                                onClick={handleLogout} // Adicionado botão de Sair
+                                onClick={handleLogout}
                                 className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-5 rounded-md transition duration-200"
                             >
                                 Sair
@@ -2193,25 +1841,23 @@ const ProfilePage = ({ onNavigateBack }) => {
     );
 };
 
-// NOVO COMPONENTE: TopBar
 const TopBar = () => {
     return (
-        <div className="bg-purple-700 text-white p-4 text-center shadow-md"> {/* Removido 'fixed', 'top-0', 'left-0', 'right-0', 'z-50' */}
+        <div className="bg-purple-700 text-white p-4 text-center shadow-md">
             <h1 className="text-2xl font-bold">appaçaí</h1>
         </div>
     );
 };
 
-
 const App = () => {
-    const { db, auth, userId, userEmail, loadingFirebase, currentAppId, message, messageType, handleCloseMessage, isAuthReady, handleLogout } = useAppContext(); // showMessage removido
+    const { db, auth, userId, userEmail, loadingFirebase, currentAppId, message, messageType, handleCloseMessage, isAuthReady, handleLogout } = useAppContext();
 
     const [cart, setCart] = useState([]);
     const [currentPage, setCurrentPage] = useState('home');
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [showAuthScreen, setShowAuthScreen] = useState(false); 
-    const [orderDetailsForCheckout, setOrderDetailsForCheckout] = useState(null); // Estado para passar detalhes do pedido
-    const [authCallbackPage, setAuthCallbackPage] = useState('home'); // NOVO: Página para redirecionar após autenticação
+    const [orderDetailsForCheckout, setOrderDetailsForCheckout] = useState(null);
+    const [authCallbackPage, setAuthCallbackPage] = useState('home');
 
     const handleClearCart = useCallback(async () => {
         if (!userId || !db || !currentAppId) {
@@ -2229,13 +1875,13 @@ const App = () => {
     }, [userId, db, currentAppId]);
 
     const handleAddToCart = useCallback(async (productToAdd) => {
-        console.log("DEBUG: handleAddToCart chamado. userId antes da verificação:", userId); // NEW LOG
+        console.log("DEBUG: handleAddToCart chamado. userId antes da verificação:", userId);
         if (!userId) {
-            console.error("Erro: ID de usuário não disponível. Tente novamente."); // showMessage removido
+            console.error("Erro: ID de usuário não disponível. Tente novamente.");
             return;
         }
         if (!db || !currentAppId) {
-            console.error("Erro: Serviço de banco de dados não disponível."); // showMessage removido
+            console.error("Erro: Serviço de banco de dados não disponível.");
             return;
         }
 
@@ -2256,25 +1902,24 @@ const App = () => {
 
         try {
             const userCartDocRef = doc(db, 'artifacts', currentAppId, 'users', userId, 'cart', 'currentCart');
-            console.log("DEBUG: Caminho do Firestore para adicionar/atualizar carrinho:", userCartDocRef.path); // NEW LOG
-            console.log("DEBUG: Dados do carrinho a serem salvos:", updatedCart); // NEW LOG
+            console.log("DEBUG: Caminho do Firestore para adicionar/atualizar carrinho:", userCartDocRef.path);
+            console.log("DEBUG: Dados do carrinho a serem salvos:", updatedCart);
             await setDoc(userCartDocRef, { items: updatedCart }, { merge: true });
-            console.log("Item adicionado ao carrinho!"); // showMessage removido
-            console.log("DEBUG: Item adicionado/atualizado no Firestore com sucesso."); // NEW LOG
+            console.log("Item adicionado ao carrinho!");
+            console.log("DEBUG: Item adicionado/atualizado no Firestore com sucesso.");
         } catch (e) {
-            console.error("DEBUG: Erro ao adicionar item ao carrinho no Firestore: ", e); // MODIFIED LOG
-            // showMessage("Erro ao adicionar item ao carrinho no servidor.", "error"); // Removido
+            console.error("DEBUG: Erro ao adicionar item ao carrinho no Firestore: ", e);
         }
-    }, [userId, db, currentAppId, cart]); // showMessage removido das dependências
+    }, [userId, db, currentAppId, cart]);
 
     const handleUpdateCartItem = useCallback(async (updatedItem) => {
-        console.log("DEBUG: handleUpdateCartItem chamado. userId antes da verificação:", userId); // NEW LOG
+        console.log("DEBUG: handleUpdateCartItem chamado. userId antes da verificação:", userId);
         if (!userId) {
-            console.error("Erro: ID de usuário não disponível. Tente novamente."); // showMessage removido
+            console.error("Erro: ID de usuário não disponível. Tente novamente.");
             return;
         }
         if (!db || !currentAppId) {
-            console.error("Erro: Serviço de banco de dados não disponível."); // showMessage removido
+            console.error("Erro: Serviço de banco de dados não disponível.");
             return;
         }
 
@@ -2285,23 +1930,22 @@ const App = () => {
 
         try {
             const userCartDocRef = doc(db, 'artifacts', currentAppId, 'users', userId, 'cart', 'currentCart');
-            console.log("DEBUG: Caminho do Firestore para atualizar carrinho:", userCartDocRef.path); // NEW LOG
-            console.log("DEBUG: Dados do carrinho a serem atualizados:", updatedCart); // NEW LOG
+            console.log("DEBUG: Caminho do Firestore para atualizar carrinho:", userCartDocRef.path);
+            console.log("DEBUG: Dados do carrinho a serem atualizados:", updatedCart);
             await setDoc(userCartDocRef, { items: updatedCart }, { merge: true });
-            console.log("DEBUG: Item do carrinho atualizado no Firestore com sucesso."); // NEW LOG
+            console.log("DEBUG: Item do carrinho atualizado no Firestore com sucesso.");
         } catch (e) {
-            console.error("DEBUG: Erro ao atualizar item do carrinho no Firestore: ", e); // MODIFIED LOG
-            // showMessage("Erro ao atualizar item no carrinho no servidor.", "error"); // Removido
+            console.error("DEBUG: Erro ao atualizar item do carrinho no Firestore: ", e);
         }
-    }, [userId, db, currentAppId, cart]); // showMessage removido das dependências
+    }, [userId, db, currentAppId, cart]);
 
     const handleRemoveFromCart = useCallback(async (cartItemId) => {
         if (!userId) {
-            console.error("Erro: ID de usuário não disponível. Tente novamente."); // showMessage removido
+            console.error("Erro: ID de usuário não disponível. Tente novamente.");
             return;
         }
         if (!db || !currentAppId) {
-            console.error("Erro: Serviço de banco de dados não disponível."); // showMessage removido
+            console.error("Erro: Serviço de banco de dados não disponível.");
             return;
         }
 
@@ -2311,12 +1955,11 @@ const App = () => {
         try {
             const userCartDocRef = doc(db, 'artifacts', currentAppId, 'users', userId, 'cart', 'currentCart');
             await setDoc(userCartDocRef, { items: updatedCart }, { merge: true });
-            console.log("Item removido do carrinho!"); // showMessage removido
+            console.log("Item removido do carrinho!");
         } catch (e) {
             console.error("Erro ao remover item do carrinho no Firestore: ", e);
-            // showMessage("Erro ao remover item do carrinho no servidor.", "error"); // Removido
         }
-    }, [userId, db, currentAppId, cart]); // showMessage removido das dependências
+    }, [userId, db, currentAppId, cart]);
 
     useEffect(() => {
         console.log("App (Cart useEffect) - Current state:", { loadingFirebase, db: !!db, userId, isAuthReady, currentAppId });
@@ -2327,18 +1970,15 @@ const App = () => {
                 console.log("App (Cart Snapshot) - Dados do carrinho recebidos. Documento existe:", docSnapshot.exists());
                 if (docSnapshot.exists()) {
                     setCart(docSnapshot.data().items || []);
-                    console.log("DEBUG: Itens do carrinho do Firestore:", docSnapshot.data().items || []); // DEBUG LOG
+                    console.log("DEBUG: Itens do carrinho do Firestore:", docSnapshot.data().items || []);
                 } else {
                     setCart([]);
-                    console.log("DEBUG: Documento do carrinho não existe ou foi excluído."); // DEBUG LOG
+                    console.log("DEBUG: Documento do carrinho não existe ou foi excluído.");
                 }
             }, (error) => {
-                console.error("DEBUG: Erro no onSnapshot do carrinho:", error); // DEBUG LOG
-                // Modificado: Se for um erro de permissão, apenas avisa no console, não mostra notificação ao usuário
+                console.error("DEBUG: Erro no onSnapshot do carrinho:", error);
                 if (error.code === 'permission-denied' || error.code === 'unavailable') {
                     console.warn("AVISO: Permissão negada ou serviço indisponível ao carregar carrinho. Isso pode ser temporário durante a inicialização/autenticação.");
-                } else {
-                    // showMessage("Erro ao carregar seu carrinho. Tente novamente mais tarde.", "error"); // Removido
                 }
             });
 
@@ -2352,45 +1992,45 @@ const App = () => {
                 setCart([]);
             }
         }
-    }, [loadingFirebase, db, userId, currentAppId, isAuthReady]); // showMessage removido das dependências
+    }, [loadingFirebase, db, userId, currentAppId, isAuthReady]);
 
-    // NOVO useEffect para sincronizar orderDetailsForCheckout com o carrinho atualizado
+    // NOVO useEffect para lidar com o retorno da página de checkout Pix externa
     useEffect(() => {
-        // Este efeito é executado sempre que o estado 'cart' muda.
-        // Queremos atualizar orderDetailsForCheckout apenas se estivermos nas páginas de finalização ou checkout
-        // E o carrinho tiver itens (o que significa que foi carregado/migrado).
-        console.log("DEBUG: useEffect de orderDetailsForCheckout acionado. Current Cart:", cart, "Current Page:", currentPage); // DEBUG LOG
-        if (cart.length > 0 && (currentPage === 'order-finalization' || currentPage === 'checkout-payment')) {
-            // Recalcula o total com base no carrinho atualizado
-            const newTotalPrice = cart.reduce((total, item) => total + (item.basePrice * item.quantity), 0);
+        const urlParams = new URLSearchParams(window.location.search);
+        const statusPagamento = urlParams.get('status_pagamento');
+        const idPedido = urlParams.get('id_pedido');
 
-            // Preserva as informações de endereço/pagamento existentes, mas atualiza os itens do carrinho e o total
-            setOrderDetailsForCheckout(prevDetails => {
-                // Se prevDetails for nulo (primeira vez que está sendo definido após a navegação),
-                // precisamos garantir a estrutura básica.
-                const currentObservations = prevDetails?.observations || '';
-                const currentDeliveryFee = prevDetails?.deliveryFee || 0;
-                const currentDeliveryAddress = prevDetails?.deliveryAddress || {};
-                const currentWhatsapp = prevDetails?.whatsapp || '';
-                const currentPaymentMethod = prevDetails?.paymentMethod || 'pix';
+        if (statusPagamento && idPedido) {
+            console.log(`DEBUG: Retorno do checkout Pix externo detectado. Status: ${statusPagamento}, Pedido ID: ${idPedido}`);
+            const updateOrderStatus = async () => {
+                if (db && currentAppId && userId) {
+                    try {
+                        const userOrderDocRef = doc(db, 'artifacts', currentAppId, 'users', userId, 'orders', idPedido);
+                        const publicOrderDocRef = doc(db, 'artifacts', currentAppId, 'public', 'data', 'all_orders', idPedido);
+                        
+                        let newStatus = 'Pendente';
+                        if (statusPagamento === 'aprovado') {
+                            newStatus = 'Confirmado';
+                        } else if (statusPagamento === 'nao_aprovado') {
+                            newStatus = 'Cancelado';
+                        } else if (statusPagamento === 'cancelado') {
+                            newStatus = 'Cancelado';
+                        }
 
-                const updatedDetails = {
-                    cartItems: cart, // Always use the latest 'cart' state for items
-                    totalPrice: newTotalPrice, // Always re-calculate total based on latest 'cart'
-                    observations: currentObservations,
-                    deliveryFee: currentDeliveryFee,
-                    deliveryAddress: currentDeliveryAddress,
-                    whatsapp: currentWhatsapp,
-                    paymentMethod: currentPaymentMethod,
-                };
-                console.log("DEBUG: orderDetailsForCheckout atualizado para:", updatedDetails); // DEBUG LOG
-                return updatedDetails;
-            });
-        } else if (cart.length === 0 && (currentPage === 'order-finalization' || currentPage === 'checkout-payment')) {
-            console.log("DEBUG: Carrinho vazio na página de finalização/checkout. Limpando orderDetailsForCheckout."); // DEBUG LOG
-            setOrderDetailsForCheckout(null);
+                        await setDoc(userOrderDocRef, { status: newStatus, lastUpdated: serverTimestamp() }, { merge: true });
+                        await setDoc(publicOrderDocRef, { status: newStatus, lastUpdated: serverTimestamp() }, { merge: true });
+                        console.log(`Status do pedido ${idPedido} atualizado para: ${newStatus}`);
+                    } catch (error) {
+                        console.error("Erro ao atualizar status do pedido no Firestore após retorno do Pix:", error);
+                    }
+                }
+            };
+            updateOrderStatus();
+
+            setCurrentPage('my-orders');
+            history.replaceState({}, document.title, window.location.pathname);
         }
-    }, [cart, currentPage, setOrderDetailsForCheckout]);
+    }, [db, currentAppId, userId]);
 
 
     const totalCartItems = cart.reduce((total, item) => total + item.quantity, 0);
@@ -2412,14 +2052,12 @@ const App = () => {
                     onUpdateCartItem={handleUpdateCartItem}
                     onRemoveFromCart={handleRemoveFromCart}
                     onClearCart={handleClearCart}
-                    onNavigateToFinalization={(details) => { // orderDetails vem do CartPage
+                    onNavigateToFinalization={(details) => {
                         setOrderDetailsForCheckout(details);
-                        // Se não estiver logado, mostra tela de autenticação
                         if (!userEmail) {
-                            setAuthCallbackPage('order-finalization'); // Define a página de retorno para 'order-finalization'
+                            setAuthCallbackPage('order-finalization');
                             setShowAuthScreen(true);
                         } else {
-                            // Se já estiver logado, vai direto para a página de finalização
                             setCurrentPage('order-finalization');
                         }
                     }}
@@ -2431,21 +2069,17 @@ const App = () => {
                     cart={cart}
                     onNavigate={setCurrentPage}
                     onShowAuthScreen={() => {
-                        setAuthCallbackPage('order-finalization'); // Define a página de retorno para 'order-finalization'
+                        setAuthCallbackPage('order-finalization');
                         setShowAuthScreen(true);
                     }}
-                    setOrderDetailsForCheckout={setOrderDetailsForCheckout} // Passa a função para OrderFinalization
-                    orderDetails={orderDetailsForCheckout} // Passa os detalhes do carrinho para Finalização
+                    setOrderDetailsForCheckout={setOrderDetailsForCheckout}
+                    orderDetails={orderDetailsForCheckout}
                 />;
-            case 'checkout-payment':
-                return <CheckoutPage
-                    orderDetails={orderDetailsForCheckout} // Passa os detalhes do pedido
-                    onNavigate={setCurrentPage}
-                    onClearCart={handleClearCart}
-                />;
+            // REMOVIDO: case 'checkout-payment':
+            //     return <CheckoutPage ... />;
             case 'my-orders':
                 return <MyOrdersPage onNavigateBack={() => setCurrentPage('home')} onShowAuthScreen={() => {
-                    setAuthCallbackPage('home'); // Define a página de retorno para 'home'
+                    setAuthCallbackPage('home');
                     setShowAuthScreen(true);
                 }} />; 
             case 'profile':
@@ -2457,15 +2091,13 @@ const App = () => {
 
     return (
         <div className="font-inter bg-gradient-to-br from-teal-800 to-green-900">
-            <TopBar /> {/* Adicionado o componente TopBar de volta */}
-            {/* Removido o padding-top que compensava a barra fixa */}
+            <TopBar />
             <Navbar
                 currentPage={currentPage}
                 onNavigate={setCurrentPage}
                 onLogout={handleLogout} 
                 userEmail={userEmail}
             />
-            {/* FloatingCartButton movido para o topo */}
             <FloatingCartButton
                 totalItems={totalCartItems}
                 totalPrice={totalCartPrice}
@@ -2475,20 +2107,18 @@ const App = () => {
 
             {renderPage()}
             
-
             {showAuthScreen && ( 
                 <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-40 p-4">
                     <AuthScreen 
                         onLoginSuccess={() => {
                             setShowAuthScreen(false);
-                            setCurrentPage(authCallbackPage); // Usa a página de retorno definida
+                            setCurrentPage(authCallbackPage);
                         }} 
                         onClose={() => setShowAuthScreen(false)} 
                     />
                 </div>
             )}
 
-            {/* A MessageBox não será mais ativada por showMessage, mas o componente permanece caso você queira usá-lo manualmente */}
             <MessageBox message={message} type={messageType} onClose={handleCloseMessage} />
         </div>
     );
