@@ -660,7 +660,7 @@ const AuthScreen = ({ onLoginSuccess, onClose }) => {
             </form>
             <p className="mt-6 text-center text-gray-600">
                 {isRegister ? (
-                    <>Já tem uma conta?{' '}
+                    <span>Já tem uma conta?{' '}
                         <button
                             type="button"
                             onClick={() => setIsRegister(false)}
@@ -668,9 +668,9 @@ const AuthScreen = ({ onLoginSuccess, onClose }) => {
                         >
                             Entre
                         </button>
-                    </>
+                    </span>
                 ) : (
-                    <>Não tem uma conta?{' '}
+                    <span>Não tem uma conta?{' '}
                         <button
                             type="button"
                             onClick={() => setIsRegister(true)}
@@ -678,7 +678,7 @@ const AuthScreen = ({ onLoginSuccess, onClose }) => {
                         >
                             Crie uma
                         </button>
-                    </>
+                    </span>
                 )}
             </p>
             {authErrorMessage && <p className="text-red-500 text-sm mt-4 text-center">{authErrorMessage}</p>}
@@ -1166,7 +1166,7 @@ const CartPage = ({ cart, onUpdateCartItem, onRemoveFromCart, onClearCart, onNav
 
 // NOVO COMPONENTE: OrderFinalization (Finalização de Pedido)
 const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetailsForCheckout, orderDetails }) => {
-    const { userId, userEmail, db, currentAppId, user } = useAppContext(); // showMessage removido
+    const { userId, userEmail, db, currentAppId, user, handleClearCart } = useAppContext(); // showMessage removido
     
     // Estados para os campos do formulário
     const [cep, setCep] = useState('');
@@ -1213,15 +1213,11 @@ const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetails
             return;
         }
 
-        // Salva os detalhes do pedido no estado do App (ou passa via props para CheckoutPage)
-        const orderDetailsToPass = {
-            // Cópia explícita dos campos do pedido, garantindo que não há 'undefined'
-            cartItems: cart, // Sempre usa o carrinho atual da página
-            totalPrice: cartTotal, // Sempre usa o total atual da página
-            observations: orderDetails?.observations || '', // Usa as observações que vieram do CartPage, se houver, ou string vazia
-            deliveryFee: orderDetails?.deliveryFee || 0, // Usa a taxa de entrega que veio do CartPage, se houver, ou 0
-
-            // Adiciona/sobrescreve com os detalhes coletados nesta página
+        const orderDetailsToSave = {
+            cartItems: cart,
+            totalPrice: cartTotal,
+            observations: orderDetails?.observations || '',
+            deliveryFee: orderDetails?.deliveryFee || 0,
             deliveryAddress: {
                 cep: cep || '', 
                 rua: rua || '', 
@@ -1230,15 +1226,54 @@ const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetails
                 pontoReferencia: pontoReferencia || ''
             },
             whatsapp: whatsapp || '', 
-            paymentMethod: paymentMethod || 'pix', // Garante um método de pagamento padrão
+            paymentMethod: paymentMethod || 'pix',
+            userId: userId,
+            userEmail: userEmail || 'anonimo@example.com',
+            timestamp: serverTimestamp(),
         };
-        setOrderDetailsForCheckout(orderDetailsToPass); // Seta no App para ser usado na CheckoutPage
 
-        if (!userEmail) {
-            onShowAuthScreen(); // Abre o pop-up de login/registro
-        } else {
-            // Se já estiver logado, vai direto para a página de checkout
-            onNavigate('checkout-payment');
+        // Salva o pedido no Firestore ANTES de redirecionar para o Pix ou ir para Meus Pedidos
+        try {
+            const allOrdersCollectionRef = collection(db, 'artifacts', currentAppId, 'public', 'data', 'all_orders');
+            const newPublicOrderRef = await addDoc(allOrdersCollectionRef, { 
+                ...orderDetailsToSave, 
+                status: paymentMethod === 'pix' ? 'Aguardando Pagamento PIX' : 'Pendente' // Status inicial
+            });
+            const orderIdForBoth = newPublicOrderRef.id;
+
+            const userOrderDocRef = doc(db, 'artifacts', currentAppId, 'users', userId, 'orders', orderIdForBoth);
+            await setDoc(userOrderDocRef, { 
+                ...orderDetailsToSave, 
+                id: orderIdForBoth, 
+                status: paymentMethod === 'pix' ? 'Aguardando Pagamento PIX' : 'Pendente' // Status inicial
+            });
+
+            handleClearCart(); // Limpa o carrinho após o pedido ser salvo
+
+            if (paymentMethod === 'pix') {
+                // Redireciona para o checkout Pix externo
+                const PIX_CHECKOUT_URL = "https://pixgemini.vercel.app"; // SUA URL REAL DO PROJETO PIX
+                const params = new URLSearchParams({
+                    valor: totalToPay.toFixed(2), // Garante que o valor é uma string formatada
+                    id_pedido: orderIdForBoth,
+                    endereco: JSON.stringify(orderDetailsToSave.deliveryAddress),
+                    observacoes: orderDetailsToSave.observations,
+                    whatsapp: orderDetailsToSave.whatsapp,
+                    userEmail: orderDetailsToSave.userEmail
+                }).toString();
+                window.location.href = `${PIX_CHECKOUT_URL}?${params}`;
+            } else if (paymentMethod === 'cash') {
+                // Redireciona para a página de Meus Pedidos
+                onNavigate('my-orders');
+            } else {
+                // Caso algum método não esperado seja selecionado (não deve acontecer com os radios)
+                console.warn("Método de pagamento não suportado:", paymentMethod);
+                onNavigate('my-orders'); // Redireciona para meus pedidos como fallback
+            }
+
+        } catch (error) {
+            console.error("Erro ao salvar pedido no Firestore:", error);
+            // showMessage("Erro ao finalizar pedido. Tente novamente.", "error"); // Removido
         }
     };
 
@@ -1349,29 +1384,7 @@ const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetails
                                     onChange={() => setPaymentMethod('pix')}
                                     className="form-radio h-5 w-5 text-purple-600"
                                 />
-                                <span className="ml-3 font-semibold">Pix (Simulado)</span>
-                            </label>
-                            <label className="flex items-center text-lg text-gray-700 cursor-pointer">
-                                <input
-                                    type="radio"
-                                    name="payment"
-                                    value="credit_card"
-                                    checked={paymentMethod === 'credit_card'}
-                                    onChange={() => setPaymentMethod('credit_card')}
-                                    className="form-radio h-5 w-5 text-purple-600"
-                                />
-                                <span className="ml-3 font-semibold">Cartão de Crédito (Simulado)</span>
-                            </label>
-                             <label className="flex items-center text-lg text-gray-700 cursor-pointer">
-                                <input
-                                    type="radio"
-                                    name="payment"
-                                    value="debit_card"
-                                    checked={paymentMethod === 'debit_card'}
-                                    onChange={() => setPaymentMethod('debit_card')}
-                                    className="form-radio h-5 w-5 text-purple-600"
-                                />
-                                <span className="ml-3 font-semibold">Cartão de Débito (Simulado)</span>
+                                <span className="ml-3 font-semibold">Pix</span>
                             </label>
                              <label className="flex items-center text-lg text-gray-700 cursor-pointer">
                                 <input
@@ -1382,7 +1395,7 @@ const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetails
                                     onChange={() => setPaymentMethod('cash')}
                                     className="form-radio h-5 w-5 text-purple-600"
                                 />
-                                <span className="ml-3 font-semibold">Dinheiro (Simulado)</span>
+                                <span className="ml-3 font-semibold">Dinheiro</span>
                             </label>
                         </div>
                     </div>
@@ -1406,7 +1419,7 @@ const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetails
                             className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-full shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:opacity-50"
                             disabled={!whatsapp || !cep || !rua || !numero || !bairro || !paymentMethod} 
                         >
-                            Ir para o Login/Cadastro
+                            {userEmail ? 'Finalizar Pedido' : 'Ir para o Login/Cadastro'}
                         </button>
                         {!whatsapp && (
                              <p className="text-red-500 text-sm text-center mt-4">
@@ -1430,22 +1443,10 @@ const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetails
     );
 };
 
-// NOVO COMPONENTE: CheckoutPage
+// NOVO COMPONENTE: CheckoutPage (Simplificado para pagamentos NÃO-PIX)
 const CheckoutPage = ({ orderDetails, onNavigate, onClearCart }) => {
     const { userId, userEmail, db, currentAppId, user } = useAppContext();
     const [submittingPayment, setSubmittingPayment] = useState(false);
-
-    // --- NOVOS ESTADOS PARA PIX ---
-    const [pixData, setPixData] = useState(null); // Stores { qrCodeBase64, qrCodeText, expirationTime, paymentId, status }
-    const [pixLoading, setPixLoading] = useState(false);
-    const [pixError, setPixError] = useState('');
-    const [countdown, setCountdown] = useState(0); // Time in seconds for expiration
-    const countdownIntervalRef = useRef(null); // Ref to store interval ID
-    const [showCopyMessage, setShowCopyMessage] = useState(false); // For "Copiado!" message
-
-    // Vercel API URL (IMPORTANTE: Substitua pela sua URL de deploy real na Vercel!)
-    const VERCEL_API_URL = "/api/create-pix-payment";
-
 
     if (!orderDetails || !orderDetails.cartItems || orderDetails.cartItems.length === 0) {
         console.error("Nenhum pedido para finalizar. Volte ao carrinho.");
@@ -1453,19 +1454,11 @@ const CheckoutPage = ({ orderDetails, onNavigate, onClearCart }) => {
         return <LoadingSpinner />; // Ou outro fallback
     }
 
-    // --- LÓGICA DE PAGAMENTO ATUALIZADA ---
-    const handleProcessPayment = async () => { // Renomeado de handlePaymentComplete
+    // Lógica para pagamentos que não são PIX (apenas Dinheiro agora)
+    const handleProcessNonPixPayment = async () => { 
         setSubmittingPayment(true);
-        setPixError(''); // Limpa erros anteriores
-
-        if (!userEmail || !userId) {
-            console.error("Erro: Usuário não autenticado. Por favor, tente novamente desde o carrinho.");
-            setSubmittingPayment(false);
-            return;
-        }
-
-        // 1. Salva/atualiza o perfil do usuário (sempre feito, independente do método de pagamento)
         try {
+            // Salva/atualiza o perfil do usuário (sempre feito, independente do método de pagamento)
             const userProfileDocRef = doc(db, 'artifacts', currentAppId, 'users', userId, 'profile', 'details');
             await setDoc(userProfileDocRef, {
                 name: user?.displayName || user?.email || '',
@@ -1481,167 +1474,37 @@ const CheckoutPage = ({ orderDetails, onNavigate, onClearCart }) => {
                 lastUpdated: serverTimestamp()
             }, { merge: true });
             console.log("Perfil do usuário atualizado com endereço e WhatsApp.");
-        } catch (error) {
-            console.error("Erro ao atualizar perfil do usuário:", error);
-            setSubmittingPayment(false);
-            return; // Impede a continuação se o perfil não puder ser salvo
-        }
 
-        // 2. Processa o pagamento de acordo com o método selecionado
-        if (orderDetails.paymentMethod === 'pix') {
-            setPixLoading(true);
-            console.log("DEBUG: Tentando gerar PIX. URL da API:", VERCEL_API_URL); // Log da URL
-            try {
-                const response = await fetch(VERCEL_API_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        amount: orderDetails.totalPrice,
-                        description: `Pedido de Açaí #${orderDetails.whatsapp}`, // Usando whatsapp como parte da descrição para unicidade
-                        payerEmail: userEmail,
-                        externalReference: `${orderDetails.whatsapp}-${Date.now()}`, // Referência única
-                    }),
-                });
-
-                console.log("DEBUG: Resposta bruta da API:", response); // Log da resposta bruta
-                const data = await response.json();
-                console.log("DEBUG: Dados JSON da resposta da API:", data); // Log dos dados JSON
-
-                if (response.ok && data.qrCodeBase64) {
-                    setPixData(data);
-                    // Salva o pedido no Firestore com os detalhes do PIX gerado
-                    const orderData = {
-                        userId: userId,
-                        userEmail: userEmail || 'anonimo@example.com',
-                        items: orderDetails.cartItems,
-                        total: orderDetails.totalPrice,
-                        status: 'Aguardando Pagamento PIX', // Novo status para PIX
-                        timestamp: serverTimestamp(),
-                        deliveryAddress: orderDetails.deliveryAddress,
-                        whatsapp: orderDetails.whatsapp,
-                        paymentMethod: orderDetails.paymentMethod,
-                        observations: orderDetails.observations,
-                        deliveryFee: orderDetails.deliveryFee,
-                        pixPaymentId: data.paymentId, // Salva o ID do pagamento do Mercado Pago
-                        pixQrCodeText: data.qrCodeText, // Salva o código copia e cola do PIX
-                        pixExpirationTime: data.expirationTime, // Salva a expiração do PIX
-                    };
-
-                    const allOrdersCollectionRef = collection(db, 'artifacts', currentAppId, 'public', 'data', 'all_orders');
-                    const newPublicOrderRef = await addDoc(allOrdersCollectionRef, orderData);
-                    const orderIdForBoth = newPublicOrderRef.id;
-
-                    const userOrderDocRef = doc(db, 'artifacts', currentAppId, 'users', userId, 'orders', orderIdForBoth);
-                    await setDoc(userOrderDocRef, { ...orderData, id: orderIdForBoth });
-
-                    onClearCart(); // Limpa o carrinho após o pedido ser salvo
-                    console.log("Pedido PIX gerado e salvo no Firestore com sucesso!");
-                    // Não há navegação imediata para 'my-orders' aqui; o usuário precisa ver o QR code
-                } else {
-                    setPixError(data.error || 'Erro desconhecido ao gerar PIX.');
-                    console.error("Erro ao gerar PIX:", data);
-                }
-            } catch (error) {
-                setPixError('Erro de conexão ao gerar PIX. Verifique sua rede.');
-                console.error("Erro de rede ao gerar PIX:", error);
-            } finally {
-                setPixLoading(false);
-                setSubmittingPayment(false);
-            }
-        } else {
-            // Lógica existente para pagamentos que não são PIX
-            try {
-                const orderData = {
-                    userId: userId,
-                    userEmail: userEmail || 'anonimo@example.com',
-                    items: orderDetails.cartItems,
-                    total: orderDetails.totalPrice,
-                    status: 'Pendente', // Status inicial para outros métodos
-                    timestamp: serverTimestamp(),
-                    deliveryAddress: orderDetails.deliveryAddress,
-                    whatsapp: orderDetails.whatsapp,
-                    paymentMethod: orderDetails.paymentMethod,
-                    observations: orderDetails.observations,
-                    deliveryFee: orderDetails.deliveryFee,
-                };
-
-                const allOrdersCollectionRef = collection(db, 'artifacts', currentAppId, 'public', 'data', 'all_orders');
-                const newPublicOrderRef = await addDoc(allOrdersCollectionRef, orderData);
-                const orderIdForBoth = newPublicOrderRef.id;
-
-                const userOrderDocRef = doc(db, 'artifacts', currentAppId, 'users', userId, 'orders', orderIdForBoth);
-                await setDoc(userOrderDocRef, { ...orderData, id: orderIdForBoth });
-
-                onClearCart();
-                console.log("Pagamento confirmado! Seu pedido foi realizado com sucesso.");
-                onNavigate('my-orders'); // Redireciona para a página de meus pedidos
-            } catch (error) {
-                console.error("Erro ao finalizar pedido:", error);
-            } finally {
-                setSubmittingPayment(false);
-            }
-        }
-    };
-
-    // --- EFEITO PARA CONTADOR REGRESSIVO DO PIX ---
-    useEffect(() => {
-        if (pixData && pixData.expirationTime) {
-            const expirationTimestamp = new Date(pixData.expirationTime).getTime();
-            const updateCountdown = () => {
-                const now = new Date().getTime();
-                const timeLeft = Math.max(0, Math.floor((expirationTimestamp - now) / 1000));
-                setCountdown(timeLeft);
-
-                if (timeLeft <= 0) {
-                    clearInterval(countdownIntervalRef.current);
-                    console.log("Tempo para pagamento PIX expirou.");
-                    // Opcional: setPixError("Tempo para pagamento Pix expirou. Por favor, faça um novo pedido.");
-                }
+            const orderData = {
+                userId: userId,
+                userEmail: userEmail || 'anonimo@example.com',
+                items: orderDetails.cartItems,
+                total: orderDetails.totalPrice,
+                status: 'Pendente', // Status inicial para Dinheiro
+                timestamp: serverTimestamp(),
+                deliveryAddress: orderDetails.deliveryAddress,
+                whatsapp: orderDetails.whatsapp,
+                paymentMethod: orderDetails.paymentMethod,
+                observations: orderDetails.observations,
+                deliveryFee: orderDetails.deliveryFee,
             };
 
-            // Limpa qualquer intervalo existente antes de iniciar um novo
-            if (countdownIntervalRef.current) {
-                clearInterval(countdownIntervalRef.current);
-            }
+            const allOrdersCollectionRef = collection(db, 'artifacts', currentAppId, 'public', 'data', 'all_orders');
+            const newPublicOrderRef = await addDoc(allOrdersCollectionRef, orderData);
+            const orderIdForBoth = newPublicOrderRef.id;
 
-            // Define o contador inicial e atualiza a cada segundo
-            updateCountdown();
-            countdownIntervalRef.current = setInterval(updateCountdown, 1000);
-        }
+            const userOrderDocRef = doc(db, 'artifacts', currentAppId, 'users', userId, 'orders', orderIdForBoth);
+            await setDoc(userOrderDocRef, { ...orderData, id: orderIdForBoth });
 
-        // Função de limpeza para parar o intervalo quando o componente for desmontado ou pixData mudar
-        return () => {
-            if (countdownIntervalRef.current) {
-                clearInterval(countdownIntervalRef.current);
-            }
-        };
-    }, [pixData]); // Depende de pixData para reiniciar quando um novo PIX é gerado
-
-    // --- FUNÇÕES AUXILIARES ---
-    // Formata o tempo para MM:SS
-    const formatTime = (seconds) => {
-        const minutes = Math.floor(seconds / 60);
-        const remainingSeconds = seconds % 60;
-        return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-    };
-
-    // Copia o código PIX para a área de transferência
-    const copyPixCode = () => {
-        if (pixData && pixData.qrCodeText) {
-            // Usando document.execCommand('copy') para melhor compatibilidade com iframes
-            const el = document.createElement('textarea');
-            el.value = pixData.qrCodeText;
-            document.body.appendChild(el);
-            el.select();
-            document.execCommand('copy');
-            document.body.removeChild(el);
-            setShowCopyMessage(true);
-            setTimeout(() => setShowCopyMessage(false), 2000); // Esconde a mensagem após 2 segundos
+            onClearCart();
+            console.log("Pagamento em Dinheiro confirmado! Seu pedido foi realizado com sucesso.");
+            onNavigate('my-orders'); // Redireciona para a página de meus pedidos
+        } catch (error) {
+            console.error("Erro ao finalizar pedido (Dinheiro):", error);
+        } finally {
+            setSubmittingPayment(false);
         }
     };
-
 
     return (
         <div className="p-4 sm:p-6 bg-teal-100 min-h-screen pb-32">
@@ -1658,80 +1521,21 @@ const CheckoutPage = ({ orderDetails, onNavigate, onClearCart }) => {
             <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl p-6 sm:p-8 text-center">
                 <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-8">Confirmação de Pagamento</h2>
 
-                {orderDetails.paymentMethod === 'pix' ? (
-                    <div className="mb-8">
-                        {pixLoading ? (
-                            <LoadingSpinner />
-                        ) : pixError ? (
-                            <div className="text-red-500 text-lg mb-4">{pixError}</div>
-                        ) : pixData ? (
-                            <>
-                                <p className="text-xl font-semibold text-gray-700 mb-4">Pague com Pix:</p>
-                                {/* Imagem do QR Code em base64 */}
-                                <img
-                                    src={`data:image/png;base64,${pixData.qrCodeBase64}`}
-                                    alt="QR Code Pix"
-                                    className="mx-auto my-4 rounded-lg shadow-md border-2 border-gray-200 w-48 h-48 sm:w-60 sm:h-60"
-                                />
-                                <p className="text-lg text-gray-600">Escaneie o QR Code acima ou use o código:</p>
-                                <div className="relative bg-gray-100 p-3 rounded-lg mt-3 mb-4 border border-gray-300 break-all text-sm sm:text-base">
-                                    <span className="font-mono">{pixData.qrCodeText}</span>
-                                    <button
-                                        onClick={copyPixCode}
-                                        className="absolute top-1/2 right-3 -translate-y-1/2 bg-teal-500 hover:bg-teal-600 text-white text-xs font-semibold py-1 px-2 rounded-md transition duration-200"
-                                    >
-                                        {showCopyMessage ? 'Copiado!' : 'Copiar'}
-                                    </button>
-                                </div>
-                                {countdown > 0 && (
-                                    <p className="text-red-500 font-semibold text-md mt-2">
-                                        Tempo restante: {formatTime(countdown)}
-                                    </p>
-                                )}
-                                {countdown <= 0 && pixData && (
-                                    <p className="text-red-600 font-bold text-lg mt-2">
-                                        O tempo para pagamento Pix expirou.
-                                    </p>
-                                )}
-                            </>
-                        ) : (
-                            <p className="text-lg text-gray-600">Preparando seu Pix...</p>
-                        )}
-                    </div>
-                ) : (
-                    <div className="mb-8">
-                        <p className="text-xl font-semibold text-gray-700 mb-4">Pagamento com {orderDetails.paymentMethod} (Simulado):</p>
-                        <p className="text-lg text-gray-600">Por favor, prossiga com o pagamento de R$ {orderDetails.totalPrice.toFixed(2)} na maquininha ao receber o pedido.</p>
-                        <p className="text-sm text-gray-500 mt-2">Esta é uma simulação. Nenhuma transação será processada.</p>
-                    </div>
-                )}
+                <div className="mb-8">
+                    <p className="text-xl font-semibold text-gray-700 mb-4">Pagamento em {orderDetails.paymentMethod === 'cash' ? 'Dinheiro' : 'Outro Método'}:</p>
+                    <p className="text-lg text-gray-600">Por favor, prossiga com o pagamento de R$ {orderDetails.totalPrice.toFixed(2)} ao receber o pedido.</p>
+                    <p className="text-sm text-gray-500 mt-2">Esta é uma simulação. Nenhuma transação será processada.</p>
+                </div>
 
                 <p className="text-2xl font-bold text-teal-800 mb-6">Total a Pagar: R$ {orderDetails.totalPrice.toFixed(2)}</p>
 
-                {orderDetails.paymentMethod === 'pix' && !pixData && !pixError ? (
-                    <button
-                        onClick={handleProcessPayment} // Este botão agora dispara a geração do PIX
-                        className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-full shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:opacity-50"
-                        disabled={submittingPayment || pixLoading}
-                    >
-                        {pixLoading ? 'Gerando Pix...' : 'Gerar Pix e Finalizar Pedido'}
-                    </button>
-                ) : orderDetails.paymentMethod === 'pix' && pixData ? (
-                    <button
-                        onClick={() => onNavigate('my-orders')} // Após o PIX ser exibido, o usuário pode ir para os pedidos
-                        className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-full shadow-md transition duration-300 ease-in-out transform hover:scale-105"
-                    >
-                        Voltar para Meus Pedidos
-                    </button>
-                ) : (
-                    <button
-                        onClick={handleProcessPayment} // Para outros métodos, isso salva no Firestore e navega
-                        className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-full shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:opacity-50"
-                        disabled={submittingPayment}
-                    >
-                        {submittingPayment ? 'Confirmando...' : 'Fiz o pagamento'}
-                    </button>
-                )}
+                <button
+                    onClick={handleProcessNonPixPayment} // Para outros métodos, isso salva no Firestore e navega
+                    className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-full shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:opacity-50"
+                    disabled={submittingPayment}
+                >
+                    {submittingPayment ? 'Confirmando...' : 'Finalizar Pedido'}
+                </button>
             </div>
         </div>
     );
@@ -1794,6 +1598,8 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
         switch (status) {
             case 'Pendente':
                 return 'text-yellow-600'; 
+            case 'Aguardando Pagamento PIX': // NOVO STATUS
+                return 'text-orange-600';
             case 'Confirmado': 
                 return 'text-blue-600'; 
             case 'Em Preparação':
@@ -2392,6 +2198,46 @@ const App = () => {
         }
     }, [cart, currentPage, setOrderDetailsForCheckout]);
 
+    // NOVO useEffect para lidar com o retorno da página de checkout Pix externa
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const statusPagamento = urlParams.get('status_pagamento');
+        const idPedido = urlParams.get('id_pedido');
+
+        if (statusPagamento && idPedido) {
+            console.log(`DEBUG: Retorno do checkout Pix externo detectado. Status: ${statusPagamento}, Pedido ID: ${idPedido}`);
+            // Atualiza o status do pedido no Firestore com base no retorno do Pix externo
+            const updateOrderStatus = async () => {
+                if (db && currentAppId && userId) {
+                    try {
+                        const userOrderDocRef = doc(db, 'artifacts', currentAppId, 'users', userId, 'orders', idPedido);
+                        const publicOrderDocRef = doc(db, 'artifacts', currentAppId, 'public', 'data', 'all_orders', idPedido);
+                        
+                        let newStatus = 'Pendente'; // Default
+                        if (statusPagamento === 'aprovado') {
+                            newStatus = 'Confirmado';
+                        } else if (statusPagamento === 'nao_aprovado') {
+                            newStatus = 'Cancelado'; // Ou 'Rejeitado'
+                        } else if (statusPagamento === 'cancelado') {
+                            newStatus = 'Cancelado';
+                        }
+
+                        await setDoc(userOrderDocRef, { status: newStatus, lastUpdated: serverTimestamp() }, { merge: true });
+                        await setDoc(publicOrderDocRef, { status: newStatus, lastUpdated: serverTimestamp() }, { merge: true });
+                        console.log(`Status do pedido ${idPedido} atualizado para: ${newStatus}`);
+                    } catch (error) {
+                        console.error("Erro ao atualizar status do pedido no Firestore após retorno do Pix:", error);
+                    }
+                }
+            };
+            updateOrderStatus();
+
+            // Redireciona para a página de Meus Pedidos e limpa os parâmetros da URL
+            setCurrentPage('my-orders');
+            history.replaceState({}, document.title, window.location.pathname);
+        }
+    }, [db, currentAppId, userId]);
+
 
     const totalCartItems = cart.reduce((total, item) => total + item.quantity, 0);
     const totalCartPrice = cart.reduce((total, item) => total + (item.basePrice * item.quantity), 0);
@@ -2437,7 +2283,7 @@ const App = () => {
                     setOrderDetailsForCheckout={setOrderDetailsForCheckout} // Passa a função para OrderFinalization
                     orderDetails={orderDetailsForCheckout} // Passa os detalhes do carrinho para Finalização
                 />;
-            case 'checkout-payment':
+            case 'checkout-payment': // Esta página agora só lida com pagamentos NÃO-PIX
                 return <CheckoutPage
                     orderDetails={orderDetailsForCheckout} // Passa os detalhes do pedido
                     onNavigate={setCurrentPage}
@@ -2501,5 +2347,3 @@ const RootApp = () => (
 );
 
 export default RootApp;
-
-
