@@ -389,7 +389,7 @@ const Navbar = ({ currentPage, onNavigate, onLogout, userEmail }) => {
 
                 {/* Pedidos Icon */}
                 <div
-                    onClick={() => onNavigate('pedidos')}
+                    onClick={() => userId ? onNavigate('pedidos') : onShowAuthScreen()}
                     className={`flex flex-col items-center justify-center p-2 cursor-pointer transition-colors duration-200
                         ${currentPage === 'pedidos' ? 'text-teal-600' : 'text-gray-500 hover:text-teal-500'}`}
                 >
@@ -1238,7 +1238,7 @@ const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetails
             onShowAuthScreen(); // Abre o pop-up de login/registro
         } else {
             // Se já estiver logado, vai direto para a página de checkout
-            onNavigate('pedidos');
+            userId ? onNavigate('pedidos') : onShowAuthScreen();
         }
     };
 
@@ -1576,7 +1576,7 @@ const CheckoutPage = ({ orderDetails, onNavigate, onClearCart }) => {
 
                 onClearCart();
                 console.log("Pagamento confirmado! Seu pedido foi realizado com sucesso.");
-                onNavigate('pedidos'); // Redireciona para a página de meus pedidos
+                userId ? onNavigate('pedidos') : onShowAuthScreen(); // Redireciona para a página de meus pedidos
             } catch (error) {
                 console.error("Erro ao finalizar pedido:", error);
             } finally {
@@ -1718,7 +1718,7 @@ const CheckoutPage = ({ orderDetails, onNavigate, onClearCart }) => {
                     </button>
                 ) : orderDetails.paymentMethod === 'pix' && pixData ? (
                     <button
-                        onClick={() => onNavigate('pedidos')} // Após o PIX ser exibido, o usuário pode ir para os pedidos
+                        onClick={() => userId ? onNavigate('pedidos') : onShowAuthScreen()} // Após o PIX ser exibido, o usuário pode ir para os pedidos
                         className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-full shadow-md transition duration-300 ease-in-out transform hover:scale-105"
                     >
                         Voltar para Meus Pedidos
@@ -2503,43 +2503,4 @@ const RootApp = () => (
 export default RootApp;
 
 
-const PedidosPage = () => {
-    const { userEmail, userId, db, currentAppId } = useAppContext();
-    const [orders, setOrders] = useState([]);
 
-    useEffect(() => {
-        if (!userId || !db || !currentAppId) return;
-
-        const ref = collection(db, 'artifacts', currentAppId, 'users', userId, 'orders');
-        const unsubscribe = onSnapshot(ref, (snapshot) => {
-            const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setOrders(list);
-        });
-
-        return () => unsubscribe();
-    }, [userId, db, currentAppId]);
-
-    return (
-        <div className="p-6 bg-white rounded-xl shadow-xl max-w-2xl mx-auto mt-8">
-            <h2 className="text-2xl font-bold mb-4">Pedidos</h2>
-            {orders?.length === 0 ? (
-                <p className="text-gray-600">Nenhum pedido encontrado.</p>
-            ) : (
-                <ul className="space-y-4">
-                    {orders.map((order) => (
-                        <li key={order.id} className="p-4 border rounded-lg shadow-sm">
-                            <p><strong>ID:</strong> {order.id}</p>
-                            <p><strong>Status:</strong> {order.status || 'Pendente'}</p>
-                            <p><strong>Email:</strong> {userEmail}</p>
-                            <p><strong>WhatsApp:</strong> {order.whatsapp || 'Não informado'}</p>
-                            <p><strong>Endereço:</strong> {order.deliveryAddress?.rua}, Nº {order.deliveryAddress?.numero}, {order.deliveryAddress?.bairro}</p>
-                            <p><strong>Pagamento:</strong> {order.paymentMethod}</p>
-                            <p><strong>Observações:</strong> {order.observations || 'Nenhuma'}</p>
-                            <p><strong>Total:</strong> R$ {(order.totalPrice || 0).toFixed(2)}</p>
-                        </li>
-                    ))}
-                </ul>
-            )}
-        </div>
-    );
-};
