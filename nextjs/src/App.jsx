@@ -389,9 +389,9 @@ const Navbar = ({ currentPage, onNavigate, onLogout, userEmail }) => {
 
                 {/* Pedidos Icon */}
                 <div
-                    onClick={() => onNavigate('my-orders')}
+                    onClick={() => onNavigate('pedidos')}
                     className={`flex flex-col items-center justify-center p-2 cursor-pointer transition-colors duration-200
-                        ${currentPage === 'my-orders' ? 'text-teal-600' : 'text-gray-500 hover:text-teal-500'}`}
+                        ${currentPage === 'pedidos' ? 'text-teal-600' : 'text-gray-500 hover:text-teal-500'}`}
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
@@ -426,7 +426,7 @@ const Navbar = ({ currentPage, onNavigate, onLogout, userEmail }) => {
 
 const FloatingCartButton = ({ totalItems, totalPrice, onNavigateToCart, currentPage }) => {
     // Esconder o botão em páginas específicas ou se o carrinho estiver vazio
-    if (totalItems === 0 || ['cart', 'profile', 'product-details', 'my-orders', 'order-finalization', 'checkout-payment'].includes(currentPage)) {
+    if (totalItems === 0 || ['cart', 'profile', 'product-details', 'pedidos', 'order-finalization', 'pedidos'].includes(currentPage)) {
         return null;
     }
 
@@ -1238,7 +1238,7 @@ const OrderFinalization = ({ cart, onNavigate, onShowAuthScreen, setOrderDetails
             onShowAuthScreen(); // Abre o pop-up de login/registro
         } else {
             // Se já estiver logado, vai direto para a página de checkout
-            onNavigate('checkout-payment');
+            onNavigate('pedidos');
         }
     };
 
@@ -1538,7 +1538,7 @@ const CheckoutPage = ({ orderDetails, onNavigate, onClearCart }) => {
 
                     onClearCart(); // Limpa o carrinho após o pedido ser salvo
                     console.log("Pedido PIX gerado e salvo no Firestore com sucesso!");
-                    // Não há navegação imediata para 'my-orders' aqui; o usuário precisa ver o QR code
+                    // Não há navegação imediata para 'pedidos' aqui; o usuário precisa ver o QR code
                 } else {
                     setPixError(data.error || 'Erro desconhecido ao gerar PIX.');
                     console.error("Erro ao gerar PIX:", data);
@@ -1576,7 +1576,7 @@ const CheckoutPage = ({ orderDetails, onNavigate, onClearCart }) => {
 
                 onClearCart();
                 console.log("Pagamento confirmado! Seu pedido foi realizado com sucesso.");
-                onNavigate('my-orders'); // Redireciona para a página de meus pedidos
+                onNavigate('pedidos'); // Redireciona para a página de meus pedidos
             } catch (error) {
                 console.error("Erro ao finalizar pedido:", error);
             } finally {
@@ -1718,7 +1718,7 @@ const CheckoutPage = ({ orderDetails, onNavigate, onClearCart }) => {
                     </button>
                 ) : orderDetails.paymentMethod === 'pix' && pixData ? (
                     <button
-                        onClick={() => onNavigate('my-orders')} // Após o PIX ser exibido, o usuário pode ir para os pedidos
+                        onClick={() => onNavigate('pedidos')} // Após o PIX ser exibido, o usuário pode ir para os pedidos
                         className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-full shadow-md transition duration-300 ease-in-out transform hover:scale-105"
                     >
                         Voltar para Meus Pedidos
@@ -1738,7 +1738,7 @@ const CheckoutPage = ({ orderDetails, onNavigate, onClearCart }) => {
 };
 
 
-const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
+const PedidosPage = ({ onNavigateBack, onShowAuthScreen }) => {
     const { userId, userEmail, db, currentAppId, isAuthReady } = useAppContext(); // showMessage removido
     const [orders, setOrders] = useState([]);
     const [ordersLoading, setOrdersLoading] = useState(true);
@@ -1747,12 +1747,12 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
     const STORE_WHATSAPP_NUMBER = "5581992764831"; 
 
     useEffect(() => {
-        console.log("MyOrdersPage useEffect trigger - userId:", userId, "userEmail:", userEmail, "db:", !!db, "isAuthReady:", isAuthReady);
+        console.log("PedidosPage useEffect trigger - userId:", userId, "userEmail:", userEmail, "db:", !!db, "isAuthReady:", isAuthReady);
 
         // Este listener só deve ser configurado se o Firebase, um userId e o estado de autenticação estiverem prontos.
         if (db && userId && isAuthReady) {
             setOrdersLoading(true); // Redefine o estado de carregamento quando os parâmetros mudam
-            console.log(`MyOrdersPage: Configurando onSnapshot para pedidos para userId: ${userId}`);
+            console.log(`PedidosPage: Configurando onSnapshot para pedidos para userId: ${userId}`);
             const ordersColRef = collection(db, 'artifacts', currentAppId, 'users', userId, 'orders');
             const q = query(
                 ordersColRef,
@@ -1760,7 +1760,7 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
             );
 
             const unsubscribe = onSnapshot(q, (snapshot) => {
-                console.log("MyOrdersPage onSnapshot: Dados recebidos.");
+                console.log("PedidosPage onSnapshot: Dados recebidos.");
                 const fetchedOrders = snapshot.docs.map(doc => {
                     const data = doc.data();
                     return {
@@ -1773,17 +1773,17 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
                 setOrders(fetchedOrders);
                 setOrdersLoading(false);
             }, (error) => {
-                console.error("MyOrdersPage: Erro ao carregar pedidos:", error); // showMessage removido
+                console.error("PedidosPage: Erro ao carregar pedidos:", error); // showMessage removido
                 setOrdersLoading(false);
             });
 
             return () => {
-                console.log("MyOrdersPage: Limpando listener de pedidos.");
+                console.log("PedidosPage: Limpando listener de pedidos.");
                 unsubscribe();
             };
         } else {
             // Se as condições não forem atendidas, limpe os pedidos e pare o carregamento.
-            console.log("MyOrdersPage useEffect: Condições NÃO atendidas para buscar pedidos. userId:", userId, "db:", !!db, "isAuthReady:", isAuthReady);
+            console.log("PedidosPage useEffect: Condições NÃO atendidas para buscar pedidos. userId:", userId, "db:", !!db, "isAuthReady:", isAuthReady);
             setOrders([]);
             setOrdersLoading(false);
         }
@@ -1879,25 +1879,7 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
                         <p className="text-center text-gray-600 text-lg sm:text-xl">Você não fez nenhum pedido ainda.</p>
                     ) : (
                         <div className="space-y-6">
-                            
-{orders?.map(order => (
-  <div key={order.id} className="border p-4 rounded-lg shadow">
-    <p><strong>Pedido:</strong> {order.id}</p>
-    <p><strong>Status:</strong> {order.status || 'Desconhecido'}</p>
-    <p><strong>Total:</strong> R$ {(order.total || 0).toFixed(2)}</p>
-
-    {Array.isArray(order.items) && (
-      <ul className="ml-4 mt-2 list-disc">
-        {order.items.map((item, idx) => (
-          <li key={idx}>
-            {item.name || 'Produto'} - R$ {(item.price || 0).toFixed(2)} x {item.quantity || 1}
-          </li>
-        ))}
-      </ul>
-    )}
-  </div>
-))}
-
+                            {orders.map(order => (
                                 <div key={order.id} className="border border-gray-200 rounded-lg p-4 sm:p-5 shadow-sm">
                                     <p className="font-bold text-lg text-teal-700 mb-2">Pedido ID: {order.id.substring(0, 8)}...</p>
                                     <p className="text-gray-700 text-sm mb-2">Data: {order.timestamp ? order.timestamp.toLocaleString() : 'N/A'}</p>
@@ -2378,7 +2360,7 @@ const App = () => {
         // Queremos atualizar orderDetailsForCheckout apenas se estivermos nas páginas de finalização ou checkout
         // E o carrinho tiver itens (o que significa que foi carregado/migrado).
         console.log("DEBUG: useEffect de orderDetailsForCheckout acionado. Current Cart:", cart, "Current Page:", currentPage); // DEBUG LOG
-        if (cart.length > 0 && (currentPage === 'order-finalization' || currentPage === 'checkout-payment')) {
+        if (cart.length > 0 && (currentPage === 'order-finalization' || currentPage === 'pedidos')) {
             // Recalcula o total com base no carrinho atualizado
             const newTotalPrice = cart.reduce((total, item) => total + (item.basePrice * item.quantity), 0);
 
@@ -2404,7 +2386,7 @@ const App = () => {
                 console.log("DEBUG: orderDetailsForCheckout atualizado para:", updatedDetails); // DEBUG LOG
                 return updatedDetails;
             });
-        } else if (cart.length === 0 && (currentPage === 'order-finalization' || currentPage === 'checkout-payment')) {
+        } else if (cart.length === 0 && (currentPage === 'order-finalization' || currentPage === 'pedidos')) {
             console.log("DEBUG: Carrinho vazio na página de finalização/checkout. Limpando orderDetailsForCheckout."); // DEBUG LOG
             setOrderDetailsForCheckout(null);
         }
@@ -2455,14 +2437,14 @@ const App = () => {
                     setOrderDetailsForCheckout={setOrderDetailsForCheckout} // Passa a função para OrderFinalization
                     orderDetails={orderDetailsForCheckout} // Passa os detalhes do carrinho para Finalização
                 />;
-            case 'checkout-payment':
+            case 'pedidos':
                 return <CheckoutPage
                     orderDetails={orderDetailsForCheckout} // Passa os detalhes do pedido
                     onNavigate={setCurrentPage}
                     onClearCart={handleClearCart}
                 />;
-            case 'my-orders':
-                return <MyOrdersPage onNavigateBack={() => setCurrentPage('home')} onShowAuthScreen={() => {
+            case 'pedidos':
+                return <PedidosPage onNavigateBack={() => setCurrentPage('home')} onShowAuthScreen={() => {
                     setAuthCallbackPage('home'); // Define a página de retorno para 'home'
                     setShowAuthScreen(true);
                 }} />; 
@@ -2519,3 +2501,45 @@ const RootApp = () => (
 );
 
 export default RootApp;
+
+
+const PedidosPage = () => {
+    const { userEmail, userId, db, currentAppId } = useAppContext();
+    const [orders, setOrders] = useState([]);
+
+    useEffect(() => {
+        if (!userId || !db || !currentAppId) return;
+
+        const ref = collection(db, 'artifacts', currentAppId, 'users', userId, 'orders');
+        const unsubscribe = onSnapshot(ref, (snapshot) => {
+            const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setOrders(list);
+        });
+
+        return () => unsubscribe();
+    }, [userId, db, currentAppId]);
+
+    return (
+        <div className="p-6 bg-white rounded-xl shadow-xl max-w-2xl mx-auto mt-8">
+            <h2 className="text-2xl font-bold mb-4">Pedidos</h2>
+            {orders?.length === 0 ? (
+                <p className="text-gray-600">Nenhum pedido encontrado.</p>
+            ) : (
+                <ul className="space-y-4">
+                    {orders.map((order) => (
+                        <li key={order.id} className="p-4 border rounded-lg shadow-sm">
+                            <p><strong>ID:</strong> {order.id}</p>
+                            <p><strong>Status:</strong> {order.status || 'Pendente'}</p>
+                            <p><strong>Email:</strong> {userEmail}</p>
+                            <p><strong>WhatsApp:</strong> {order.whatsapp || 'Não informado'}</p>
+                            <p><strong>Endereço:</strong> {order.deliveryAddress?.rua}, Nº {order.deliveryAddress?.numero}, {order.deliveryAddress?.bairro}</p>
+                            <p><strong>Pagamento:</strong> {order.paymentMethod}</p>
+                            <p><strong>Observações:</strong> {order.observations || 'Nenhuma'}</p>
+                            <p><strong>Total:</strong> R$ {(order.totalPrice || 0).toFixed(2)}</p>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+};
