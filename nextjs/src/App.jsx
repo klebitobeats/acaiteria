@@ -1444,7 +1444,7 @@ const CheckoutPage = ({ orderDetails, onNavigate, onClearCart }) => {
     const [showCopyMessage, setShowCopyMessage] = useState(false); // For "Copiado!" message
 
     // Vercel API URL (IMPORTANTE: Substitua pela sua URL de deploy real na Vercel!)
-    const VERCEL_API_URL = "https://acaiapp-in2c.vercel.app/api/create-pix-payment";
+    const VERCEL_API_URL = "/api/create-pix-payment";
 
 
     if (!orderDetails || !orderDetails.cartItems || orderDetails.cartItems.length === 0) {
@@ -1739,7 +1739,7 @@ const CheckoutPage = ({ orderDetails, onNavigate, onClearCart }) => {
 
 
 const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
-    const { userId, userEmail, db, currentAppId, isAuthReady } = useAppContext(); // showMessage removido
+    const { userId, userEmail, db, currentAppId, isAuthReady, user } = useAppContext(); // showMessage removido
     const [orders, setOrders] = useState([]);
     const [ordersLoading, setOrdersLoading] = useState(true);
 
@@ -1749,8 +1749,8 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
     useEffect(() => {
         console.log("MyOrdersPage useEffect trigger - userId:", userId, "userEmail:", userEmail, "db:", !!db, "isAuthReady:", isAuthReady);
 
-        // Este listener só deve ser configurado se o Firebase, um userId e o estado de autenticação estiverem prontos.
-        if (db && userId && isAuthReady) {
+        // Somente configura o listener se o usuário estiver autenticado (não anônimo) e o Firebase estiver pronto
+        if (db && user && !user.isAnonymous && isAuthReady) {
             setOrdersLoading(true); // Redefine o estado de carregamento quando os parâmetros mudam
             console.log(`MyOrdersPage: Configurando onSnapshot para pedidos para userId: ${userId}`);
             const ordersColRef = collection(db, 'artifacts', currentAppId, 'users', userId, 'orders');
@@ -1773,7 +1773,7 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
                 setOrders(fetchedOrders);
                 setOrdersLoading(false);
             }, (error) => {
-                console.error("MyOrdersPage: Erro ao carregar pedidos:", error); // showMessage removido
+                console.error("MyOrdersPage: Erro ao carregar pedidos:", error); 
                 setOrdersLoading(false);
             });
 
@@ -1782,12 +1782,13 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
                 unsubscribe();
             };
         } else {
-            // Se as condições não forem atendidas, limpe os pedidos e pare o carregamento.
-            console.log("MyOrdersPage useEffect: Condições NÃO atendidas para buscar pedidos. userId:", userId, "db:", !!db, "isAuthReady:", isAuthReady);
+            // Se as condições não forem atendidas (usuário anônimo ou não pronto),
+            // limpe os pedidos e defina ordersLoading como false.
+            console.log("MyOrdersPage useEffect: Condições NÃO atendidas para buscar pedidos. userId:", userId, "db:", !!db, "isAuthReady:", isAuthReady, "user.isAnonymous:", user?.isAnonymous);
             setOrders([]);
             setOrdersLoading(false);
         }
-    }, [userId, db, currentAppId, isAuthReady]); // showMessage removido das dependências
+    }, [userId, user, db, currentAppId, isAuthReady]); 
 
     // Função para obter as classes de cor com base no status
     const getStatusColorClass = (status) => {
@@ -1861,8 +1862,8 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
             </button>
             <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-xl p-6 sm:p-8">
                 <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 text-center mb-8">Meus Pedidos</h2>
-                {/* AQUI: A condição para exibir o prompt de login agora inclui 'isAuthReady' */}
-                {!userEmail && isAuthReady ? ( 
+                {/* AQUI: A condição para exibir o prompt de login agora inclui 'isAuthReady' e verifica se o usuário é anônimo */}
+                {(!userEmail && isAuthReady) || (user && user.isAnonymous && isAuthReady) ? ( 
                     <div className="text-center">
                         <p className="text-gray-700 text-lg sm:text-xl mb-4">
                             Para ver seus pedidos (antigos e novos), por favor, faça login ou cadastre-se.
