@@ -226,7 +226,7 @@ const AppProvider = ({ children }) => {
             });
             const productsColRef = collection(firestoreDb, 'artifacts', fixedAppId, 'public', 'data', 'products');
             const unsubscribeProducts = onSnapshot(productsColRef, (snapshot) => {
-                const products = snapshot.docs?.map(doc => ({ id: doc.id, ...doc.data() }));
+                const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 setProductsData(products);
                 setLoadingProductsAndToppings(false);
             }, (error) => {
@@ -242,7 +242,7 @@ const AppProvider = ({ children }) => {
             // CORREÇÃO: Removido o 'public' duplicado no caminho da coleção de toppings
             const toppingsColRef = collection(firestoreDb, 'artifacts', fixedAppId, 'public', 'data', 'toppings'); 
             const unsubscribeToppings = onSnapshot(toppingsColRef, (snapshot) => {
-                const toppings = snapshot.docs?.map(doc => ({ id: doc.id, ...doc.data() }));
+                const toppings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 setToppingsData(toppings);
                 setLoadingProductsAndToppings(false);
             }, (error) => {
@@ -455,7 +455,7 @@ const CustomizeAcaiModal = ({ product, onClose, onCompleteCustomization, initial
     const availableToppings = toppingsData;
 
     const [selectedIncludedIngredients, setSelectedIncludedIngredients] = useState(initialSelectedDefaultIngredients.length > 0 ? [...initialSelectedDefaultIngredients] : (Array.isArray(product.defaultIngredients) ? [...product.defaultIngredients] : []));
-    const [selectedToppings, setSelectedToppings] = useState(initialToppings?.map(t => t.id));
+    const [selectedToppings, setSelectedToppings] = useState(initialToppings.map(t => t.id));
     const [quantity, setQuantity] = useState(initialQuantity);
 
     const calculateItemBasePrice = () => {
@@ -483,7 +483,7 @@ const CustomizeAcaiModal = ({ product, onClose, onCompleteCustomization, initial
     };
 
     const handleCompleteAction = () => {
-        const addedToppings = selectedToppings?.map(toppingId => availableToppings.find(t => t.id === toppingId)).filter(Boolean);
+        const addedToppings = selectedToppings.map(toppingId => availableToppings.find(t => t.id === toppingId)).filter(Boolean);
 
         const cartItemId = `${product.id}-${JSON.stringify(selectedIncludedIngredients.sort())}-${JSON.stringify(selectedToppings.sort())}`;
 
@@ -511,7 +511,7 @@ const CustomizeAcaiModal = ({ product, onClose, onCompleteCustomization, initial
                         <div className="mb-4 p-3 sm:p-4 bg-gray-100 rounded-lg">
                             <h4 className="text-base sm:text-xl font-semibold text-gray-700 mb-2">Ingredientes Padrão (remova se não quiser):</h4>
                             <div className="space-y-2">
-                                {product.defaultIngredients?.map((ingredient, index) => (
+                                {product.defaultIngredients.map((ingredient, index) => (
                                     <label key={index} className="flex items-center text-sm sm:text-lg text-gray-700 cursor-pointer">
                                         <input
                                             type="checkbox"
@@ -715,7 +715,7 @@ const ProductList = ({ onSelectProduct }) => {
             <>
                 <h3 className="text-2xl sm:text-3xl font-bold text-teal-700 text-center mb-6 mt-8">{title}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 max-w-6xl mx-auto">
-                    {filteredProducts?.map(product => (
+                    {filteredProducts.map(product => (
                         <div
                             key={product.id}
                             className="bg-white rounded-2xl shadow-xl overflow-hidden transform transition duration-300 hover:scale-105 flex flex-col items-center p-4 sm:p-6 cursor-pointer"
@@ -836,7 +836,7 @@ const ProductDetailPage = ({ product, onAddToCart, onNavigateBack }) => {
                     <div className="mb-3 sm:mb-4 w-full">
                         <h3 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2 sm:mb-3">Inclui:</h3>
                         <ul className="list-disc list-inside text-sm sm:text-lg text-gray-700">
-                            {currentCustomizedProduct.selectedDefaultIngredients?.map((ingredient, index) => (
+                            {currentCustomizedProduct.selectedDefaultIngredients.map((ingredient, index) => (
                                 <li key={index}>{ingredient}</li>
                             ))}
                         </ul>
@@ -847,7 +847,7 @@ const ProductDetailPage = ({ product, onAddToCart, onNavigateBack }) => {
                     <div className="mb-4 sm:mb-6 w-full">
                         <h3 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2 sm:mb-3">Adicionais:</h3>
                         <ul className="list-disc list-inside text-sm sm:text-lg text-gray-700">
-                            {currentCustomizedProduct.toppings?.map((topping, index) => (
+                            {currentCustomizedProduct.toppings.map((topping, index) => (
                                 <li key={index}>{topping.name} (R$ {topping.price.toFixed(2)})</li>
                             ))}
                         </ul>
@@ -895,7 +895,7 @@ const RecommendedProducts = ({ cartItems, onAddToCart }) => {
         }
 
         // IDs dos itens já no carrinho para evitar duplicatas
-        const cartProductIds = new Set(cartItems?.map(item => item.id));
+        const cartProductIds = new Set(cartItems.map(item => item.id));
 
         // Filtra produtos que não são açaí e não estão no carrinho, e que não estão fora de estoque
         const eligibleProducts = productsData.filter(product =>
@@ -918,7 +918,7 @@ const RecommendedProducts = ({ cartItems, onAddToCart }) => {
             <h3 className="text-xl sm:text-2xl font-bold text-gray-900 mb-6 text-center">Outros clientes também compraram:</h3>
             {/* Adicionado overflow-x-auto e flex flex-nowrap para permitir o scroll horizontal */}
             <div className="flex flex-nowrap overflow-x-auto gap-6 pb-4"> {/* Adicionado pb-4 para evitar que a barra de rolagem cubra o conteúdo */}
-                {recommended?.map(product => (
+                {recommended.map(product => (
                     <div key={product.id} className="flex-none w-48 flex flex-col items-center text-center p-4 border border-gray-200 rounded-lg shadow-sm">
                         <img src={product.image} alt={product.name} className="w-20 h-20 object-cover rounded-full mb-3 border-2 border-teal-300" onError={(e) => e.target.src = 'https://placehold.co/80x80/cccccc/000000?text=Sem+Imagem'}/>
                         <p className="font-semibold text-md text-gray-800 mb-1">{product.name}</p>
@@ -1040,7 +1040,7 @@ const CartPage = ({ cart, onUpdateCartItem, onRemoveFromCart, onClearCart, onNav
                 ) : (
                     <>
                         <ul className="space-y-4 mb-6">
-                            {cart?.map((item) => (
+                            {cart.map((item) => (
                                 <li key={item.cartItemId} className="flex flex-col sm:flex-row justify-between items-center border-b border-gray-200 pb-4 pt-4 first:pt-0">
                                     <div className="flex items-center w-full sm:w-auto mb-3 sm:mb-0">
                                         <img src={item.image} alt={item.name} className="w-16 h-16 rounded-full object-cover mr-4 border border-gray-200" onError={(e) => e.target.src = 'https://placehold.co/160x160/cccccc/000000?text=Sem+Imagem'}/>
@@ -1050,7 +1050,7 @@ const CartPage = ({ cart, onUpdateCartItem, onRemoveFromCart, onClearCart, onNav
                                                 <p className="text-gray-600 text-sm">Inclui: {item.selectedDefaultIngredients.join(', ')}</p>
                                             )}
                                             {item.toppings && item.toppings.length > 0 && (
-                                                <p className="text-gray-600 text-sm">Adicionais: {item.toppings?.map(t => t.name).join(', ')}</p>
+                                                <p className="text-gray-600 text-sm">Adicionais: {item.toppings.map(t => t.name).join(', ')}</p>
                                             )}
                                             <p className="text-teal-600 font-bold text-base">R$ {item.basePrice.toFixed(2)} / un.</p>
                                         </div>
@@ -1444,7 +1444,7 @@ const CheckoutPage = ({ orderDetails, onNavigate, onClearCart }) => {
     const [showCopyMessage, setShowCopyMessage] = useState(false); // For "Copiado!" message
 
     // Vercel API URL (IMPORTANTE: Substitua pela sua URL de deploy real na Vercel!)
-    const VERCEL_API_URL = "/api/create-pix-payment";
+    const VERCEL_API_URL = "https://acaiapp-in2c.vercel.app/api/create-pix-payment";
 
 
     if (!orderDetails || !orderDetails.cartItems || orderDetails.cartItems.length === 0) {
@@ -1761,7 +1761,7 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
 
             const unsubscribe = onSnapshot(q, (snapshot) => {
                 console.log("MyOrdersPage onSnapshot: Dados recebidos.");
-                const fetchedOrders = snapshot.docs?.map(doc => {
+                const fetchedOrders = snapshot.docs.map(doc => {
                     const data = doc.data();
                     return {
                         id: doc.id,
@@ -1827,7 +1827,7 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
                 message += `  (Inclui: ${item.selectedDefaultIngredients.join(', ')})\n`;
             }
             if (item.toppings && item.toppings.length > 0) {
-                message += `  (Adicionais: ${item.toppings?.map(t => t.name).join(', ')})\n`;
+                message += `  (Adicionais: ${item.toppings.map(t => t.name).join(', ')})\n`;
             }
         });
 
@@ -1879,7 +1879,7 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
                         <p className="text-center text-gray-600 text-lg sm:text-xl">Você não fez nenhum pedido ainda.</p>
                     ) : (
                         <div className="space-y-6">
-                            {orders?.map(order => (
+                            {orders.map(order => (
                                 <div key={order.id} className="border border-gray-200 rounded-lg p-4 sm:p-5 shadow-sm">
                                     <p className="font-bold text-lg text-teal-700 mb-2">Pedido ID: {order.id.substring(0, 8)}...</p>
                                     <p className="text-gray-700 text-sm mb-2">Data: {order.timestamp ? order.timestamp.toLocaleString() : 'N/A'}</p>
@@ -1888,10 +1888,10 @@ const MyOrdersPage = ({ onNavigateBack, onShowAuthScreen }) => {
                                     </p>
                                     <h3 className="font-semibold text-base text-gray-800 mb-2">Itens:</h3>
                                     <ul className="list-disc list-inside text-sm text-gray-600 mb-3">
-                                        {order.items?.map((item, index) => (
+                                        {order.items.map((item, index) => (
                                             <li key={index}>{item.name} x {item.quantity} - R$ ${(item.basePrice * item.quantity).toFixed(2)}
                                                 {item.selectedDefaultIngredients && item.selectedDefaultIngredients.length > 0 && ` (Inclui: ${item.selectedDefaultIngredients.join(', ')})`}
-                                                {item.toppings && item.toppings.length > 0 && ` (Adicionais: ${item.toppings?.map(t => t.name).join(', ')})`}
+                                                {item.toppings && item.toppings.length > 0 && ` (Adicionais: ${item.toppings.map(t => t.name).join(', ')})`}
                                             </li>
                                         ))}
                                     </ul>
@@ -2245,7 +2245,7 @@ const App = () => {
         let updatedCart = [];
 
         if (existingItemIndex > -1) {
-            updatedCart = cart?.map((item, index) =>
+            updatedCart = cart.map((item, index) =>
                 index === existingItemIndex ? { ...item, quantity: item.quantity + productToAdd.quantity } : item
             );
         } else {
@@ -2278,7 +2278,7 @@ const App = () => {
             return;
         }
 
-        const updatedCart = cart?.map(item =>
+        const updatedCart = cart.map(item =>
             item.cartItemId === updatedItem.cartItemId ? updatedItem : item
         );
         setCart(updatedCart);
